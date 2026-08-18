@@ -1,0 +1,8 @@
+# Root-level env files (used by docker-compose.yml)
+.env
+.env.*
+!.env.example
+
+# OS/editor cruft that can show up regardless of subproject
+.DS_Store
+Thumbs.db

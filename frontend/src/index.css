@@ -1,0 +1,197 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Consolas, monospace;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-status-good: var(--status-good);
+  --color-status-good-foreground: var(--status-good-foreground);
+  --color-status-warning: var(--status-warning);
+  --color-status-warning-foreground: var(--status-warning-foreground);
+  --color-status-serious: var(--status-serious);
+  --color-status-critical: var(--status-critical);
+  --color-status-critical-foreground: var(--status-critical-foreground);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-grid: var(--chart-grid);
+  --color-chart-baseline: var(--chart-baseline);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --animate-fade-in: fade-in 0.4s ease-out;
+  --animate-slide-up: slide-up 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-pulse-ring: pulse-ring 2.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes slide-up {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes pulse-ring {
+    0%, 100% { opacity: 0.55; transform: scale(1); }
+    50% { opacity: 0.15; transform: scale(1.35); }
+  }
+}
+
+:root {
+  --radius: 0.75rem;
+
+  /* Page plane / primary ink */
+  --background: #f9f9f7;
+  --foreground: #0b0b0b;
+
+  --card: #fcfcfb;
+  --card-foreground: #0b0b0b;
+  --popover: #fcfcfb;
+  --popover-foreground: #0b0b0b;
+
+  /* categorical slot 1 (blue) */
+  --primary: #2a78d6;
+  --primary-foreground: #ffffff;
+
+  --secondary: #f0efec;
+  --secondary-foreground: #0b0b0b;
+
+  --muted: #eceae4;
+  --muted-foreground: #52514e;
+
+  --accent: #cde2fb;
+  --accent-foreground: #0d366b;
+
+  --destructive: #d03b3b;
+  --destructive-foreground: #ffffff;
+
+  --border: #e1e0d9;
+  --input: #e1e0d9;
+  --ring: #2a78d6;
+
+  /* fixed status palette — never themed */
+  --status-good: #0ca30c;
+  --status-good-foreground: #ffffff;
+  --status-warning: #fab219;
+  --status-warning-foreground: #3d2c00;
+  --status-serious: #ec835a;
+  --status-critical: #d03b3b;
+  --status-critical-foreground: #ffffff;
+
+  --chart-1: #2a78d6;
+  --chart-2: #eb6834;
+  --chart-3: #1baf7a;
+  --chart-grid: #e1e0d9;
+  --chart-baseline: #c3c2b7;
+}
+
+.dark {
+  --background: #0d0d0d;
+  --foreground: #ffffff;
+
+  --card: #1a1a19;
+  --card-foreground: #ffffff;
+  --popover: #1a1a19;
+  --popover-foreground: #ffffff;
+
+  --primary: #3987e5;
+  --primary-foreground: #ffffff;
+
+  --secondary: #242422;
+  --secondary-foreground: #ffffff;
+
+  --muted: #242422;
+  --muted-foreground: #c3c2b7;
+
+  --accent: #184f95;
+  --accent-foreground: #cde2fb;
+
+  --destructive: #e66767;
+  --destructive-foreground: #1a1a19;
+
+  --border: #2c2c2a;
+  --input: #2c2c2a;
+  --ring: #3987e5;
+
+  --status-good: #0ca30c;
+  --status-good-foreground: #ffffff;
+  --status-warning: #fab219;
+  --status-warning-foreground: #241a00;
+  --status-serious: #ec835a;
+  --status-critical: #d03b3b;
+  --status-critical-foreground: #ffffff;
+
+  --chart-1: #3987e5;
+  --chart-2: #d95926;
+  --chart-3: #199e70;
+  --chart-grid: #2c2c2a;
+  --chart-baseline: #383835;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+    outline-color: color-mix(in oklab, var(--color-ring) 55%, transparent);
+  }
+  html {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  ::selection {
+    background-color: color-mix(in oklab, var(--color-primary) 30%, transparent);
+  }
+}
+
+@layer utilities {
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: var(--color-border);
+    border-radius: 999px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}

@@ -1,0 +1,108 @@
+name: CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (ruff, mypy, pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      # Only used by the "Apply migrations to Postgres" step below — pytest
+      # itself runs against an isolated in-memory SQLite database per test
+      # (see backend/tests/conftest.py), which needs no service at all.
+      # Migrations get their own real-engine check because they can behave
+      # differently against Postgres than SQLite (enum/JSON columns, type
+      # mapping) — worth catching in CI independently of the pytest run.
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: fade
+          POSTGRES_PASSWORD: fade
+          POSTGRES_DB: fade
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U fade -d fade"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      SECRET_KEY: ci-test-secret-not-for-production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "backend/uv.lock"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: ruff
+        run: uv run ruff check app tests scripts
+
+      - name: mypy
+        run: uv run mypy app
+
+      - name: pytest
+        run: uv run pytest -v --cov=app --cov-report=term-missing
+
+      - name: Apply migrations to Postgres
+        run: uv run alembic upgrade head
+        env:
+          DATABASE_URL: postgresql+asyncpg://fade:fade@localhost:5432/fade
+
+  frontend:
+    name: Frontend (tsc, oxlint, vitest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npx tsc -b --noEmit
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+  ci:
+    name: CI
+    if: always()
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any required job failed
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1

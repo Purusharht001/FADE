@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[codz]
+*.egg-info/
+.venv/
+.python-version
+
+# uv
+uv.lock.bak
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Database
+*.db
+*.db-journal
+*.sqlite3
+
+# Uploads (PHI-adjacent — never commit scan data)
+data/uploads/*
+!data/uploads/.gitkeep
+
+# Test / tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Editor
+.vscode/
+.idea/

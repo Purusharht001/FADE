@@ -1,0 +1,56 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: fade
+      POSTGRES_PASSWORD: fade
+      POSTGRES_DB: fade
+    volumes:
+      - fade_pg_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fade -d fade"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ENVIRONMENT: production
+      DEBUG: "false"
+      DATABASE_URL: postgresql+asyncpg://fade:fade@db:5432/fade
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env before running docker compose}
+      # The frontend is served to the browser, not reached container-to-container,
+      # so CORS has to allow the browser-facing origin (the `frontend` service's
+      # published host port), not its internal docker-network hostname.
+      CORS_ALLOW_ORIGINS: '["http://localhost:5173"]'
+      UPLOAD_DIR: /app/data/uploads
+    ports:
+      - "8000:8000"
+    volumes:
+      - fade_uploads:/app/data/uploads
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Baked in at build time (Vite inlines VITE_* vars) — must match the
+        # `api` service's published host port above, since this is the URL
+        # the browser calls, not an internal docker-network address.
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "5173:80"
+
+volumes:
+  fade_pg_data:
+  fade_uploads:
