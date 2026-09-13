@@ -22,7 +22,13 @@ async def get_current_user(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer_scheme)],
 ) -> User:
     if credentials is None:
-        raise UnauthorizedError("Missing bearer token.")
+        # No login flow is wired up in the frontend right now — every
+        # unauthenticated request resolves to a shared default account
+        # instead of being rejected, so the app is usable without a
+        # working auth setup. The JWT/login machinery (this function's
+        # other branch, /auth/register, /auth/login) still works normally
+        # for anyone who does send a real bearer token.
+        return await user_repo.get_or_create_default(db)
 
     payload = decode_token(credentials.credentials, TokenType.ACCESS)
     try:

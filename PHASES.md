@@ -212,16 +212,18 @@ from Dr. Deshmukh.
 **Goal:** Make the tool usable by a clinician, not just runnable by the team.
 
 **Status:** A React/TypeScript dashboard is built in [`frontend/`](frontend/) and talks to
-[`backend/`](backend/) over a real JWT-authenticated REST API — triage list sorted by diagnostic
-uncertainty (server-computed, client re-applied as a defense-in-depth guarantee — see
-`frontend/src/lib/sort.ts`), per-case biomarker gauges, per-biomarker fuzzy membership charts (plotting
-points the API pre-samples — the frontend never runs `trapmf` or any fuzzy-logic computation itself),
-and a rule-explainability panel. Login, case creation (upload a real `.nii`/`.nii.gz` or generate a
-synthetic demo scan), and clinician review all round-trip through the live pipeline, including
-graceful handling of a 422 `UnprocessableScanError` (inline retry in the "run scan" dialog; a toast +
-navigate-to-record when the failure happens during case creation, so the clinician isn't stranded).
-Covered by a vitest + React Testing Library suite. See [`frontend/README.md`](frontend/README.md) for
-the API client / auth-store / React Query architecture.
+[`backend/`](backend/) over a real REST API — triage list sorted by diagnostic uncertainty
+(server-computed, client re-applied as a defense-in-depth guarantee — see `frontend/src/lib/sort.ts`),
+per-case biomarker gauges, per-biomarker fuzzy membership charts (plotting points the API pre-samples —
+the frontend never runs `trapmf` or any fuzzy-logic computation itself), and a rule-explainability
+panel. Case creation (upload a real `.nii`/`.nii.gz` or generate a synthetic demo scan) and clinician
+review round-trip through the live pipeline, including graceful handling of a 422
+`UnprocessableScanError` (inline retry in the "run scan" dialog; a toast + navigate-to-record when the
+failure happens during case creation, so the clinician isn't stranded). No login gate — the backend's
+JWT auth is implemented but not enforced yet (every request resolves to a shared default account; see
+`backend/README.md`'s security notes), so the app is directly reachable while that flow isn't wired up
+frontend-side. Covered by a vitest + React Testing Library suite. See
+[`frontend/README.md`](frontend/README.md) for the API client / React Query architecture.
 
 **Key tasks:**
 - ~~Build a minimal interface showing: input scan, extracted biomarkers, staged output, confidence

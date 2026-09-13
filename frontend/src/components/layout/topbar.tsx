@@ -1,10 +1,7 @@
-import { useLocation, useNavigate } from "react-router-dom";
-import { LogOut, Search } from "lucide-react";
+import { useLocation } from "react-router-dom";
+import { Search } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useAuthStore } from "@/store/auth";
 
 const TITLES: Record<string, { title: string; subtitle: string }> = {
   "/": {
@@ -15,19 +12,11 @@ const TITLES: Record<string, { title: string; subtitle: string }> = {
 
 export function Topbar() {
   const location = useLocation();
-  const navigate = useNavigate();
-  const user = useAuthStore((s) => s.user);
-  const logout = useAuthStore((s) => s.logout);
 
   const meta = TITLES[location.pathname] ?? {
     title: "Case Review",
     subtitle: "Volumetric biomarkers and fuzzy staging output",
   };
-
-  function handleLogout() {
-    logout();
-    navigate("/login", { replace: true });
-  }
 
   return (
     <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-4 border-b border-border bg-background/85 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/70 sm:px-6">
@@ -48,22 +37,7 @@ export function Topbar() {
         Demo data
       </Badge>
 
-      {user && (
-        <span className="hidden max-w-[10rem] truncate text-xs text-muted-foreground md:inline">
-          {user.fullName}
-        </span>
-      )}
-
       <ThemeToggle />
-
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button variant="outline" size="icon" onClick={handleLogout} aria-label="Sign out">
-            <LogOut className="size-4" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>Sign out</TooltipContent>
-      </Tooltip>
     </header>
   );
 }

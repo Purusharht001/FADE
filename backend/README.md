@@ -155,8 +155,16 @@ Full request/response schemas: `/docs` (Swagger UI) or `/redoc`.
 
 ## Security notes
 
-JWT auth (HS256, `PyJWT`), bcrypt password hashing, per-IP rate limiting (`slowapi`), CORS locked to
-the configured frontend origin(s). `SECRET_KEY` **must** be overridden outside local dev — the default
-is intentionally an obviously-fake placeholder that only works because `ENVIRONMENT=development`.
-Uploaded scan files are never committed to the repo (`data/uploads/` is gitignored) and are stored
-outside version control per the root README's [data-ethics note](../README.md#15-note-on-data-ethics).
+The JWT auth machinery is fully implemented (HS256 `PyJWT`, bcrypt password hashing, `/auth/register`,
+`/auth/login`, `/auth/refresh`) but **not currently enforced**: `app/api/deps.py`'s `get_current_user()`
+resolves any request with no bearer token to a shared default account
+(`user_repo.get_or_create_default()`) instead of rejecting it, since the frontend doesn't have a login
+flow wired up yet. A request that *does* send a valid token is still authenticated normally against
+that real user. Re-enabling a hard requirement is a one-line change (raise instead of falling back) once
+a login UI exists.
+
+Also in place: per-IP rate limiting (`slowapi`), CORS locked to the configured frontend origin(s).
+`SECRET_KEY` **must** be overridden outside local dev — the default is intentionally an obviously-fake
+placeholder that only works because `ENVIRONMENT=development`. Uploaded scan files are never committed
+to the repo (`data/uploads/` is gitignored) and are stored outside version control per the root
+README's [data-ethics note](../README.md#15-note-on-data-ethics).

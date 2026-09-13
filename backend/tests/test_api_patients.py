@@ -6,9 +6,15 @@ from tests.conftest import register_and_login
 
 
 class TestCreateAndListPatients:
-    async def test_create_patient_requires_auth(self, client: AsyncClient):
+    async def test_create_patient_without_auth_succeeds_via_default_user(
+        self, client: AsyncClient
+    ):
+        """No login flow is wired up in the frontend right now, so
+        unauthenticated requests must not be rejected — see
+        app/api/deps.py's get_current_user().
+        """
         resp = await client.post("/api/v1/patients", json={"age": 70, "sex": "F"})
-        assert resp.status_code == 401
+        assert resp.status_code == 201
 
     async def test_create_and_fetch_patient(self, client: AsyncClient):
         headers = await register_and_login(client)

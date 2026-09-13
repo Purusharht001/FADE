@@ -8,8 +8,6 @@ codebase.
 
 ## What it demonstrates
 
-- **Auth** — JWT login/register against the real API, a route guard that redirects unauthenticated
-  visitors to `/login`, session persisted in `localStorage`.
 - **Triage dashboard** — cases ranked by diagnostic *uncertainty* (how close the top two fuzzy stage
   memberships are), not by scan date or patient ID. That ranking is the whole workload-reduction thesis
   of the project made concrete. Sorted server-side; re-applied client-side (`lib/sort.ts`) as a
@@ -31,8 +29,8 @@ codebase.
 ## Stack
 
 Vite + React 19 + TypeScript, Tailwind CSS v4, Radix primitives (shadcn-style local components in
-`src/components/ui`), TanStack Query for server state, Zustand for client state (auth session, theme,
-toasts), Recharts for charts, Framer Motion for motion, React Router for navigation.
+`src/components/ui`), TanStack Query for server state, Zustand for client state (theme, toasts),
+Recharts for charts, Framer Motion for motion, React Router for navigation.
 
 ## Running
 
@@ -44,26 +42,27 @@ npm run build    # production build (type-checks first)
 npm test         # vitest — sort logic, dashboard rendering/loading/error states, API error parsing
 ```
 
-Demo login (seeded by `backend/scripts/seed.py`): `clinician@fade.demo` / `fade-demo-2026`.
+No login is required — every request resolves to a shared default backend account (see
+`backend/README.md`'s auth section). Point `VITE_API_BASE_URL` at a running `backend/` and the
+dashboard is reachable directly.
 
 ## Structure
 
 ```
 src/
 ├── api/                 # typed fetch client + React Query hooks, one file per backend resource
-│   ├── client.ts          # fetch wrapper, ApiError (parses both backend error shapes), 401 handling
-│   ├── auth.ts, patients.ts, fis.ts, cohort.ts
+│   ├── client.ts          # fetch wrapper, ApiError (parses both backend error shapes)
+│   ├── patients.ts, fis.ts, cohort.ts
 ├── components/
 │   ├── ui/                # local shadcn-style primitives (Button, Card, Badge, Dialog, Tabs, Toast, …)
-│   ├── auth/               # RequireAuth route guard
 │   ├── layout/             # app shell, sidebar, topbar
 │   ├── dashboard/          # triage dashboard widgets, New Case dialog
 │   └── patient/            # case-detail widgets (gauges, fuzzy membership chart, rule list, run-scan dialog)
 ├── lib/
 │   ├── sort.ts             # sortPatientsByUncertainty — orders an already-computed number, computes nothing clinical
 │   └── stage-style.ts      # CN/MCI/AD → color/label mapping (UI presentation only)
-├── pages/                 # Login, Dashboard, PatientDetail (route-level code-split)
-├── store/                 # auth session, theme, toast notifications (all Zustand)
+├── pages/                 # Dashboard, PatientDetail (route-level code-split)
+├── store/                 # theme, toast notifications (Zustand)
 └── types/api.ts           # hand-written mirror of backend/app/schemas/*.py — the wire contract
 ```
 

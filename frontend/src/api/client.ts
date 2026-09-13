@@ -1,4 +1,3 @@
-import { getAccessToken, useAuthStore } from "@/store/auth";
 import type { ApiErrorBody, ValidationErrorBody } from "@/types/api";
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
@@ -59,20 +58,19 @@ interface RequestOptions extends Omit<RequestInit, "body"> {
   body?: unknown;
   /** Send as multipart/form-data instead of JSON. */
   form?: FormData;
-  auth?: boolean;
 }
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { body, form, auth = true, headers, ...rest } = options;
+  const { body, form, headers, ...rest } = options;
 
   const finalHeaders = new Headers(headers);
   if (!form) finalHeaders.set("Content-Type", "application/json");
 
-  if (auth) {
-    const token = getAccessToken();
-    if (token) finalHeaders.set("Authorization", `Bearer ${token}`);
-  }
-
+  // No login flow is wired up right now — every request goes out
+  // unauthenticated and the backend resolves it to a shared default
+  // account (see backend/app/api/deps.py's get_current_user()). If a real
+  // auth flow comes back, this is the place to reattach an Authorization
+  // header.
   const response = await fetch(`${BASE_URL}${API_PREFIX}${path}`, {
     ...rest,
     headers: finalHeaders,
@@ -81,11 +79,6 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
   if (!response.ok) {
     const { code, message } = await extractErrorMessage(response);
-    if (response.status === 401 && auth) {
-      // Session is invalid/expired — clear it so the route guard redirects
-      // to /login instead of every subsequent call failing the same way.
-      useAuthStore.getState().logout();
-    }
     throw new ApiError(response.status, code, message);
   }
 

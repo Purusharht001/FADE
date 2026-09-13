@@ -44,9 +44,28 @@ class TestRegisterAndLogin:
         )
         assert resp.status_code == 401
 
-    async def test_me_requires_a_token(self, client: AsyncClient):
+    async def test_me_without_a_token_resolves_to_the_default_user(self, client: AsyncClient):
+        """No login flow is wired up in the frontend right now, so an
+        unauthenticated request must not be rejected — it resolves to a
+        shared default account instead. See app/api/deps.py's
+        get_current_user().
+        """
         resp = await client.get("/api/v1/auth/me")
-        assert resp.status_code == 401
+        assert resp.status_code == 200
+        assert resp.json()["email"] == "demo@fade.local"
+
+    async def test_me_with_a_valid_token_still_returns_that_user(self, client: AsyncClient):
+        await client.post(
+            "/api/v1/auth/register",
+            json={"email": "real@b.com", "password": "supersecret1", "full_name": "Real User"},
+        )
+        login = await client.post(
+            "/api/v1/auth/login", json={"email": "real@b.com", "password": "supersecret1"}
+        )
+        token = login.json()["accessToken"]
+        resp = await client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
+        assert resp.status_code == 200
+        assert resp.json()["email"] == "real@b.com"
 
     async def test_me_returns_current_user_with_valid_token(self, client: AsyncClient):
         await client.post(

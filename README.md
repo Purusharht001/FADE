@@ -144,7 +144,7 @@ dependencies, and risks per phase).
 | 5 | System Integration | **Built** - MRI in → stage + confidence out, exercised via a live REST API |
 | 6 | Benchmark Validation | Not started - blocked on Phase 1 (no OASIS/ADNI data loaded yet) |
 | 7 | Real-World Clinical Validation | Blocked on Phase 1 (clinic consent/ethics) |
-| 8 | Decision-Support Interface | **Built and wired to `backend/`** - live login, real patient/scan data, real-time processing states |
+| 8 | Decision-Support Interface | **Built and wired to `backend/`** - real patient/scan data, real-time processing states (no login gate yet — see backend README's security notes) |
 | 9 | Evaluation & Iteration | Refine rules against clinical feedback |
 | 10 | Documentation & Presentation | Final report, demo, paper writeup |
 

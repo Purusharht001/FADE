@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api, ApiError } from "@/api/client";
-import { useAuthStore } from "@/store/auth";
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -12,7 +11,6 @@ function jsonResponse(status: number, body: unknown): Response {
 describe("api client error handling", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn());
-    useAuthStore.setState({ accessToken: null, refreshToken: null, user: null, isAuthenticated: false });
   });
 
   afterEach(() => {
@@ -75,45 +73,13 @@ describe("api client error handling", () => {
     await expect(api.get("/x")).rejects.toMatchObject({ status: 502, message: "Bad Gateway" });
   });
 
-  it("logs the session out on a 401 so the route guard redirects to /login", async () => {
-    useAuthStore.setState({
-      accessToken: "stale-token",
-      refreshToken: "stale-refresh",
-      user: { id: "1", email: "a@b.com", fullName: "A", role: "clinician", isActive: true },
-      isAuthenticated: true,
-    });
-    vi.mocked(fetch).mockResolvedValue(
-      jsonResponse(401, { error: { code: "unauthorized", message: "Token expired" } })
-    );
-
-    await expect(api.get("/patients")).rejects.toThrow();
-    expect(useAuthStore.getState().isAuthenticated).toBe(false);
-    expect(useAuthStore.getState().accessToken).toBeNull();
-  });
-
-  it("does not attempt a logout loop for unauthenticated requests (e.g. /auth/login itself)", async () => {
-    vi.mocked(fetch).mockResolvedValue(
-      jsonResponse(401, { error: { code: "unauthorized", message: "Incorrect email or password." } })
-    );
-
-    await expect(api.post("/auth/login", {}, { auth: false })).rejects.toThrow();
-    // Nothing was logged in to begin with, and nothing should have changed.
-    expect(useAuthStore.getState().isAuthenticated).toBe(false);
-  });
-
-  it("sends a bearer token when authenticated", async () => {
-    useAuthStore.setState({
-      accessToken: "real-token",
-      refreshToken: "r",
-      user: null,
-      isAuthenticated: true,
-    });
+  it("does not attach an Authorization header (no login flow is wired up)", async () => {
     const mockFetch = vi.mocked(fetch);
     mockFetch.mockResolvedValue(jsonResponse(200, { ok: true }));
 
     await api.get("/patients");
 
     const headers = mockFetch.mock.calls[0][1]?.headers as Headers;
-    expect(headers.get("Authorization")).toBe("Bearer real-token");
+    expect(headers.get("Authorization")).toBeNull();
   });
 });
