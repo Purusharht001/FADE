@@ -170,20 +170,24 @@ handful of *known OASIS cases* specifically are still pending Phase 1.
 
 ---
 
-## Phase 6 — Benchmark Validation
+## Phase 6 — Benchmark Validation *(Interim empirical benchmark completed on OASIS-1)*
 
 **Goal:** Quantify staging performance against public-dataset ground truth before trusting the system
 on real patients.
 
+**Status:** Completed preliminary empirical benchmark on OASIS-1 ($N = 235$ subjects) in Google Colab (see [`docs/BENCHMARK_OASIS1.md`](docs/BENCHMARK_OASIS1.md)):
+- Evaluated baseline classifiers (Logistic Regression, SVM-RBF, Random Forest) on stratified 80/20 split; Logistic Regression achieved 61.90% Balanced Accuracy and 53.91% Macro-F1.
+- Validated that the MCI class represents the primary classification bottleneck for hard-label models.
+- Implemented and evaluated custom Mamdani fuzzy inference membership functions (`trimf`, `trapmf`) on `nwbv` based on cohort distribution to validate fuzzy triage and uncertainty quantification on real data.
+
 **Key tasks:**
-- Run the full pipeline on held-out OASIS (and ADNI, if available) subjects.
+- Run the full pipeline on held-out OASIS (and ADNI, if available) subjects. *(Interim OASIS-1 evaluation done)*
 - Compare against ground-truth clinical labels: accuracy, per-class sensitivity/specificity
-  (MCI will likely be the weakest class — expect and report this rather than treating it as a bug).
+  (MCI confirmed as weakest class for hard classifiers).
 - Compare qualitatively against results reported in references [1], [3], [5] as a sanity check, not a
   competition — methodology and cohorts differ.
 
-**Deliverables:** Benchmark results report, confusion matrix per dataset, comparison against reference
-literature.
+**Deliverables:** Benchmark results report ([`docs/BENCHMARK_OASIS1.md`](docs/BENCHMARK_OASIS1.md)), confusion matrix per dataset, comparison against reference literature.
 
 ---
 

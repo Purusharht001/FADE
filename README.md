@@ -108,8 +108,7 @@ plan around his availability, not just team bandwidth.
   never computes anything clinical - every fuzzy-logic number it renders (stage, confidence,
   uncertainty, fired rules, membership curves) comes straight from the API. Covered by a vitest + React
   Testing Library suite (`frontend/`'s `npm test`) alongside the backend's pytest suite.
-- **Evaluation (Phase 6, not yet built):** scikit-learn (metrics), pandas - for benchmarking against
-  OASIS/ADNI once Phase 1 dataset access lands.
+- **Evaluation (Phase 6 interim results completed):** scikit-learn (metrics), pandas, matplotlib, seaborn — preliminary empirical benchmarking executed on OASIS-1 ($N = 235$) in Google Colab (see [`docs/BENCHMARK_OASIS1.md`](docs/BENCHMARK_OASIS1.md) and §9.1 below).
 
 ## 8. Repository Structure
 
@@ -119,7 +118,10 @@ pjt1/
 ├── frontend/               # ✅ built - decision-support dashboard, wired to the live API, see frontend/README.md
 ├── .github/workflows/      # CI - lint/typecheck/test on every PR, see ci.yml
 ├── docker-compose.yml      # full stack: Postgres + FastAPI + React (nginx) - see §12 below
-├── docs/                  # rule-base design notes, clinician review notes, reports (not yet started)
+├── docs/                   # architecture, baseline gate, OASIS-1 benchmark results
+│   ├── ARCHITECTURE.md
+│   ├── BENCHMARK_OASIS1.md # ✅ OASIS-1 empirical benchmark & Mamdani fuzzy triage validation
+│   └── PHASE0_GATE.md
 ├── PHASES.md
 └── README.md
 ```
@@ -142,11 +144,29 @@ dependencies, and risks per phase).
 | 3 | Volumetric Feature Extraction | **Built** - hippocampal volume, VBR, cortical thickness, real segmentation code |
 | 4 | Fuzzy Inference System Design | **Built** - 10-rule Mamdani engine; rules are illustrative, not yet clinician-reviewed |
 | 5 | System Integration | **Built** - MRI in → stage + confidence out, exercised via a live REST API |
-| 6 | Benchmark Validation | Not started - blocked on Phase 1 (no OASIS/ADNI data loaded yet) |
+| 6 | Benchmark Validation | **Interim Completed** on OASIS-1 ($N = 235$) — baseline models + fuzzy triage validation (see [`docs/BENCHMARK_OASIS1.md`](docs/BENCHMARK_OASIS1.md)) |
 | 7 | Real-World Clinical Validation | Blocked on Phase 1 (clinic consent/ethics) |
 | 8 | Decision-Support Interface | **Built and wired to `backend/`** - real patient/scan data, real-time processing states (no login gate yet — see backend README's security notes) |
 | 9 | Evaluation & Iteration | Refine rules against clinical feedback |
 | 10 | Documentation & Presentation | Final report, demo, paper writeup |
+
+### 9.1 OASIS-1 Empirical Benchmark & Fuzzy Triage Validation (Colab Results)
+
+Preliminary empirical validation was conducted on the **OASIS-1** cross-sectional cohort ($N = 235$ subjects: 135 CN [$57.4\%$], 70 MCI [$29.8\%$], 30 AD [$12.8\%$]) evaluating volumetric features (`nwbv`, `atrophy`, `etiv`):
+
+- **Baseline Classifier Benchmark (80/20 Stratified Split, 47 test subjects):**
+  - **Logistic Regression (Balanced):** **61.90% Balanced Accuracy**, **53.91% Macro-F1** (Top performing baseline architecture).
+  - **Support Vector Machine (RBF kernel)** & **Random Forest** evaluated as comparative baselines.
+- **Experimental Diagnostic Visualizations Generated:**
+  1. `01_cohort_distribution.png`: Clinical stage breakdown across CN, MCI, and AD.
+  2. `02_biomarker_distributions.png`: Overlapping density plots of `nwbv` and `etiv` by stage, visualizing continuous atrophy gradients.
+  3. `03_model_benchmark.png`: Balanced accuracy comparison highlighting Logistic Regression.
+  4. `04_confusion_matrix.png`: True vs. predicted confusion matrix demonstrating classification ambiguity concentrated on the MCI boundary.
+  5. `05_per_class_metrics.png`: Precision, Recall, and F1-score across stages.
+- **Custom Mamdani Fuzzy Inference Engine & Triage Validation:**
+  - Evaluated continuous triangular (`trimf`) and trapezoidal (`trapmf`) membership functions on `nwbv` based on cohort quartiles.
+  - Confirmed that conventional hard-label classifiers suffer their highest error rate on the borderline MCI group, whereas FADE's fuzzy inference engine natively surfaces this diagnostic uncertainty to triage cases for clinical review.
+  - For full execution details, metrics, and figure specifications, see [`docs/BENCHMARK_OASIS1.md`](docs/BENCHMARK_OASIS1.md).
 
 **Immediate next step, unblocked today:** the clinician-review conversation Phase 4 has always needed
 (§5) - the rule base and biomarker breakpoints are implemented and demoable end-to-end, but still
