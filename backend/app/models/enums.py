@@ -12,6 +12,8 @@ class Sex(StrEnum):
 
 
 class DataSource(StrEnum):
+    # TODO(clinical: C1) -- no PHANTOM member. Synthetic phantom cases
+    # are currently recorded as OASIS/ADNI/Clinic. See app/db/seed.py.
     OASIS = "OASIS"
     ADNI = "ADNI"
     CLINIC = "Clinic"

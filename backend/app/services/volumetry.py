@@ -54,6 +54,11 @@ from app.services.synthetic_mri import VOLUME_SHAPE
 
 # Calibrated reference intensities, in the [0, 1] bias-corrected /
 # min-max-normalized space `preprocessing.py` produces.
+# TODO(clinical: C9) -- these four constants, and the Gaussian width
+# derived from them, are fitted to the synthetic phantom. Every
+# biomarker the system reports traces back to them, so they bound what
+# any downstream accuracy claim can mean. Real values would come from a
+# population intensity atlas, not a phantom.
 _CSF_REF = 0.05
 _HIPPOCAMPUS_REF = 0.40
 _PARENCHYMA_REF = 0.58

@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     rate_limit_default: str = "120/minute"
 
     # --- Clinical thresholds (kept configurable, not magic numbers buried in services) ---
+    # TODO(clinical: C6) -- scale and polarity differ from the specified
+    # "review when confidence < 0.65". This is an UNCERTAINTY threshold on
+    # a 0-100 scale, compared with >=. Provisional pending calibration.
     uncertainty_review_threshold: float = 45.0
 
     # --- File uploads ---

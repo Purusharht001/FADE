@@ -1,4 +1,13 @@
-"""Mamdani-style fuzzy inference engine for CN / MCI / AD staging.
+"""Fuzzy inference engine for CN / MCI / AD staging.
+
+TODO(clinical: C10) -- This module is NOT Mamdani inference and performs
+no defuzzification, despite how it was previously described. There is no
+output universe, no aggregated output fuzzy set, and no centroid. What it
+actually does: take the max firing strength per stage, then normalise the
+three activations to sum to 1. The result is rendered to clinicians as a
+confidence percentage, which implies a probability this does not produce.
+Building a real output stage requires output-set breakpoints on a new
+axis -- a clinical decision, not a coding one. See docs/ARCHITECTURE.md.
 
 This is the Phase 4/5 reference implementation: fuzzy AND is min, fuzzy OR
 is max (standard Zadeh operators), each rule's antecedent produces a firing
@@ -103,6 +112,9 @@ RULES: list[Rule] = [
         "R6",
         "IF any single biomarker is severely abnormal, independent of the others",
         Stage.AD,
+        # TODO(clinical: C5) -- 0.75 is unsourced. Every other rule is
+        # weighted 1.0, so this encodes a stance on how much a single
+        # severe biomarker is worth relative to two concurring ones.
         lambda f: 0.75 * fOR(_deg(f, HV, LOW), _deg(f, VBR, HIGH), _deg(f, CT, LOW)),
     ),
     Rule(
@@ -164,8 +176,14 @@ def run_fis(
 
     total = sum(activation.values())
     if total <= 1e-9:
-        # No rule fired at all (values far outside every fuzzy set) — treat as
-        # maximally uncertain rather than silently defaulting to one stage.
+        # No rule fired at all (values far outside every fuzzy set).
+        # TODO(clinical: C4) -- this comment used to claim it avoids
+        # defaulting to one stage. It does not. With all three degrees
+        # equal, the stable sort below resolves the tie to Stage enum
+        # declaration order, so the reported stage is ALWAYS CN -- the
+        # reassuring answer, returned exactly when the system knows
+        # nothing. needs_review is correctly True, but a stage label is
+        # still emitted. Phase 2 defines this path properly.
         membership = dict.fromkeys(Stage, 1 / 3)
     else:
         membership = {stage: round(v / total, 4) for stage, v in activation.items()}

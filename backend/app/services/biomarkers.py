@@ -100,6 +100,9 @@ class BiomarkerDef:
         borderline = degrees.get(FuzzyLabel.BORDERLINE, 0.0)
         # Weighted blend: fully in the worst set -> 1.0, fully normal -> 0.0,
         # fully borderline -> 0.5, with linear blending in between.
+        # TODO(clinical: C7) -- the 0.5 asserts a fully borderline
+        # biomarker is exactly half as concerning as a fully abnormal one.
+        # Unsourced, and shown to clinicians as a per-biomarker severity.
         return round(min(1.0, max(0.0, worst + 0.5 * borderline + 0.0 * normal)), 4)
 
 
@@ -109,9 +112,15 @@ BIOMARKER_DEFS: dict[BiomarkerKey, BiomarkerDef] = {
         label="Hippocampal Volume",
         short_label="Hippocampus",
         unit="mL",
+        # TODO(clinical: C8) -- disagrees with the NORMAL set below, which
+        # plateaus 3.6-6.0. A 5.0 mL reading renders as outside normal on
+        # screen while the engine treats it as fully normal.
         normal_range=(3.0, 4.5),
         lower_is_worse=True,
         description=(
+            # TODO(clinical: C2) -- this says ICV-normalized. Nothing in
+            # this repository computes ICV; volumetry.py returns a raw mL
+            # volume. The value is mislabelled, not merely uncorrected.
             "Bilateral hippocampal volume, normalized for intracranial volume. Atrophy here is "
             "one of the earliest structural markers of AD-related neurodegeneration."
         ),
@@ -122,6 +131,12 @@ BIOMARKER_DEFS: dict[BiomarkerKey, BiomarkerDef] = {
         },
         display_range=(0.0, 6.5),
     ),
+    # TODO(clinical: C3) -- the VBR and cortical-thickness breakpoints
+    # below are calibrated to what the 2mm phantom can resolve, not to
+    # clinical scales: "normal" cortex reads 5.6-6.0 mm against a real
+    # AD-signature thickness of roughly 2.5 mm. The unit strings sent to
+    # the UI are still clinical, so a neurologist reading this screen
+    # would reasonably conclude the instrument is broken.
     BiomarkerKey.VENTRICLE_BRAIN_RATIO: BiomarkerDef(
         key=BiomarkerKey.VENTRICLE_BRAIN_RATIO,
         label="Ventricle-to-Brain Ratio",
