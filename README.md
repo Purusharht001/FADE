@@ -242,10 +242,3 @@ Reviewed to establish feasibility, methodology, and novelty:
 7. *Computer-Aided Diagnosis System of Alzheimer's Disease Based on Multimodal Fusion: Tissue
    Quantification Based on the Hybrid Fuzzy-Genetic-Possibilistic Model and Discriminative
    Classification Based on the SVDD Model.* PMC. https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6826987/
-
-## 15. Note on Data Ethics
-
-This project involves real, identifiable patient MRI data prior to anonymization. Do not commit any
-patient data, DICOM headers, or clinic records to this repository at any point - `data/` should stay
-gitignored, and only de-identified, consented, processed data should ever leave the clinical
-environment.
