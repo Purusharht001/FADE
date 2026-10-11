@@ -35,9 +35,7 @@ RESPONSIBILITIES: dict[str, str] = {
     "app/api/v1/health.py": "Liveness/readiness and app metadata.",
     "app/api/v1/patients.py": "Patient CRUD and listing.",
     "app/api/v1/router.py": "Mounts every v1 sub-router under the configured prefix.",
-    "app/api/v1/scans.py": (
-        "Scan upload, synthetic-scan creation, scan read, clinician review."
-    ),
+    "app/api/v1/scans.py": ("Scan upload, synthetic-scan creation, scan read, clinician review."),
     "app/core/config.py": (
         "Pydantic `Settings`, env-sourced. Holds `uncertainty_review_threshold` - see C6."
     ),
@@ -46,8 +44,7 @@ RESPONSIBILITIES: dict[str, str] = {
     "app/core/security.py": "Password hashing (bcrypt) and JWT encode/decode.",
     "app/db/base.py": "Declarative `Base` plus UUID-PK and timestamp mixins.",
     "app/db/seed.py": (
-        "Deterministic demo seeding. "
-        "**Labels phantom patients as OASIS/ADNI/Clinic - see C1.**"
+        "Deterministic demo seeding. **Labels phantom patients as OASIS/ADNI/Clinic - see C1.**"
     ),
     "app/db/session.py": "Async engine and sessionmaker.",
     "app/main.py": "App factory: middleware, exception handlers, router mount, lifespan.",
@@ -141,8 +138,11 @@ def main() -> int:
     files = sorted(APP.rglob("*.py"))
     imports, imported_by = build_graph(files)
 
-    unmapped = [str(p).replace("\\", "/") for p in files
-                if str(p).replace("\\", "/") not in RESPONSIBILITIES]
+    unmapped = [
+        str(p).replace("\\", "/")
+        for p in files
+        if str(p).replace("\\", "/") not in RESPONSIBILITIES
+    ]
     if unmapped:
         print("No responsibility described for:", *unmapped, sep="\n  ", file=sys.stderr)
         return 1

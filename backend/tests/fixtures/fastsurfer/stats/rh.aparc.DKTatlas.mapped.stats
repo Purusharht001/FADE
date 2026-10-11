@@ -1,0 +1,26 @@
+# Table of FreeSurfer cortical parcellation anatomical statistics
+#
+# CreationTime 2026/01/01-00:00:00-GMT
+# generating_program mris_anatomical_stats
+# cmdline mris_anatomical_stats -mgz -cortex ../label/rh.cortex.label -f ../stats/rh.aparc.DKTatlas.mapped.stats -b -a ../label/rh.aparc.annot -c ../label/aparc.annot.ctab fixture-fastsurfer rh white
+# sysname  Linux
+# hostname fixture-host
+# user     fixture-user
+#
+# SUBJECTS_DIR /fixture/subjects
+# anatomy_type surface
+# subjectname fixture-fastsurfer
+# hemi rh
+# AnnotationFile ../label/rh.aparc.annot
+# HAND-WRITTEN TEST FIXTURE. Every number below is invented. Not a real subject.
+# Measure Cortex, NumVert, Number of Vertices, 131000, unitless
+# Measure Cortex, WhiteSurfArea, White Surface Total Area, 82500.0, mm^2
+# Measure Cortex, MeanThickness, Mean Thickness, 2.52000, mm
+# NTableCols 10
+# ColHeaders StructName NumVert SurfArea GrayVol ThickAvg ThickStd MeanCurv GausCurv FoldInd CurvInd
+entorhinal                                580    380   1850  3.400  0.720     0.118     0.031        6     0.7
+inferiortemporal                         4900   3300  10800  2.800  0.660     0.131     0.030       68     5.9
+middletemporal                           5000   3400  11500  2.900  0.630     0.126     0.029       62     5.3
+parahippocampal                           950    650   2000  2.600  0.610     0.091     0.021       10     0.9
+precuneus                                5800   3900   9300  2.300  0.560     0.126     0.027       66     6.1
+superiortemporal                         5400   3600  11500  2.700  0.650     0.106     0.023       48     5.0

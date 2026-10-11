@@ -1,0 +1,42 @@
+# Title Segmentation Statistics
+#
+# generating_program mri_segstats
+# cvs_version $Id: mri_segstats.c,v 1.121 2016/05/31 17:27:11 greve Exp $
+# cmdline mri_segstats --seg mri/aseg.mgz --sum stats/aseg.stats --pv mri/norm.mgz --empty --brainmask mri/brainmask.mgz --brain-vol-from-seg --excludeid 0 --excl-ctxgmwm --supratent --subcortgray --in mri/norm.mgz --in-intensity-name norm --in-intensity-units MR --etiv --surf-wm-vol --surf-ctx-vol --totalgray --euler --ctab ASegStatsLUT.txt --subject FIXTURE_0001
+# sysname  Linux
+# hostname fixture-host
+# machine  x86_64
+# user     fixture-user
+# anatomy_type volume
+#
+# SUBJECTS_DIR /fixture/subjects
+# subjectname FIXTURE_0001
+# HAND-WRITTEN TEST FIXTURE. Every number below is invented. Not a real subject.
+# Measure BrainSeg, BrainSegVol, Brain Segmentation Volume, 1100000.000000, mm^3
+# Measure BrainSegNotVent, BrainSegVolNotVent, Brain Segmentation Volume Without Ventricles, 1074000.000000, mm^3
+# Measure lhCortex, lhCortexVol, Left hemisphere cortical gray matter volume, 220000.000000, mm^3
+# Measure rhCortex, rhCortexVol, Right hemisphere cortical gray matter volume, 225000.000000, mm^3
+# Measure Cortex, CortexVol, Total cortical gray matter volume, 445000.000000, mm^3
+# Measure SubCortGray, SubCortGrayVol, Subcortical gray matter volume, 55000.000000, mm^3
+# Measure TotalGray, TotalGrayVol, Total gray matter volume, 600000.000000, mm^3
+# Measure SupraTentorial, SupraTentorialVol, Supratentorial volume, 980000.000000, mm^3
+# Measure Mask, MaskVol, Mask Volume, 1600000.000000, mm^3
+# Measure BrainSegVol-to-eTIV, BrainSegVol-to-eTIV, Ratio of BrainSegVol to eTIV, 0.733333, unitless
+# Measure EstimatedTotalIntraCranialVol, eTIV, Estimated Total Intracranial Volume, 1500000.000000, mm^3
+# SegVolFile mri/aseg.mgz
+# ColorTable ASegStatsLUT.txt
+# NRows 12
+# NTableCols 10
+# ColHeaders  Index SegId NVoxels Volume_mm3 StructName normMean normStdDev normMin normMax normRange
+  1   4     12000    12000.0  Left-Lateral-Ventricle            28.2870    12.4321     9.0000    86.0000    77.0000
+  2   5       400      400.0  Left-Inf-Lat-Vent                 40.1000    11.2000    14.0000    75.0000    61.0000
+  3   7     14000    14000.0  Left-Cerebellum-White-Matter      88.5000     6.1000    40.0000   110.0000    70.0000
+  4  14      1500     1500.0  3rd-Ventricle                     30.9000    13.5000    10.0000    80.0000    70.0000
+  5  15      1800     1800.0  4th-Ventricle                     26.4000    14.0000     8.0000    82.0000    74.0000
+  6  17      3900     3900.0  Left-Hippocampus                  71.2000     8.4000    38.0000   101.0000    63.0000
+  7  18      1500     1500.0  Left-Amygdala                     73.0000     7.0000    44.0000    98.0000    54.0000
+  8  43     11000    11000.0  Right-Lateral-Ventricle           27.9000    12.1000     9.0000    84.0000    75.0000
+  9  44       600      600.0  Right-Inf-Lat-Vent                39.5000    11.6000    13.0000    77.0000    64.0000
+ 10  53      4100     4100.0  Right-Hippocampus                 72.0000     8.1000    40.0000   102.0000    62.0000
+ 11  54      1600     1600.0  Right-Amygdala                    73.4000     6.8000    45.0000    97.0000    52.0000
+ 12  72         0        0.0  5th-Ventricle                      0.0000     0.0000     0.0000     0.0000     0.0000

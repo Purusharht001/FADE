@@ -22,6 +22,10 @@ uv.lock.bak
 data/uploads/*
 !data/uploads/.gitkeep
 
+# Real subject data for local-only tests (e.g. the OAS1_0001_MR1 VBR check).
+# Never commit real stats files or scans.
+tests/fixtures/private/
+
 # Test / tooling
 .pytest_cache/
 .mypy_cache/

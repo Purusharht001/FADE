@@ -109,6 +109,19 @@ async def create_scan(
     return scan
 
 
+async def get_scan_by_external_subject_id(
+    db: AsyncSession, external_subject_id: str
+) -> Scan | None:
+    """The earliest scan recorded under a research subject identifier."""
+    result = await db.execute(
+        select(Scan)
+        .where(Scan.external_subject_id == external_subject_id)
+        .order_by(Scan.created_at)
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
 async def get_patient_only(db: AsyncSession, patient_id: uuid.UUID) -> Patient | None:
     """The patient row alone, without its scan history."""
     return await db.get(Patient, patient_id)

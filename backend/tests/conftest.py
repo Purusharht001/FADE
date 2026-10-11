@@ -28,10 +28,10 @@ def _isolate_upload_dir(tmp_path_factory: pytest.TempPathFactory) -> None:
 
 
 @pytest_asyncio.fixture
-async def client() -> AsyncGenerator[AsyncClient]:
-    """A fresh in-memory SQLite database per test, wired into the real
-    FastAPI app via a dependency override — every test starts from a clean
-    schema with no cross-test state leakage.
+async def app_db() -> AsyncGenerator[async_sessionmaker[AsyncSession]]:
+    """The session factory behind the `client` fixture's database. A test
+    that needs to arrange or inspect rows the API cannot reach (a scan in
+    a particular status, the audit log) requests this alongside `client`.
     """
     engine = create_async_engine(
         TEST_DATABASE_URL, connect_args={"check_same_thread": False}, poolclass=StaticPool
@@ -39,7 +39,18 @@ async def client() -> AsyncGenerator[AsyncClient]:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    session_factory = async_sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+    yield async_sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+
+    await engine.dispose()
+
+
+@pytest_asyncio.fixture
+async def client(app_db: async_sessionmaker[AsyncSession]) -> AsyncGenerator[AsyncClient]:
+    """A fresh in-memory SQLite database per test, wired into the real
+    FastAPI app via a dependency override — every test starts from a clean
+    schema with no cross-test state leakage.
+    """
+    session_factory = app_db
 
     async def _override_get_db() -> AsyncGenerator[AsyncSession]:
         async with session_factory() as session:
@@ -57,7 +68,6 @@ async def client() -> AsyncGenerator[AsyncClient]:
         yield ac
 
     fastapi_app.dependency_overrides.pop(get_db, None)
-    await engine.dispose()
 
 
 @pytest_asyncio.fixture

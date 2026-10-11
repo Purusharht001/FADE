@@ -1,0 +1,36 @@
+# Title Segmentation Statistics
+#
+# generating_program segstats.py
+# cmdline segstats.py --segfile mri/aparc.DKTatlas+aseg.deep.mgz --normfile mri/orig_nu.mgz --segstatsfile stats/aseg+DKT.VINN.stats
+# sysname  Linux
+# hostname fixture-host
+# user     nonroot
+# anatomy_type volume
+#
+# SUBJECTS_DIR /output
+# subjectname fixture-fastsurfer
+# HAND-WRITTEN TEST FIXTURE in the style of FastSurfer's aseg+DKT stats: the
+# cortex is reported per DKT region (ctx-lh-*, ctx-rh-*), not as one
+# structure. Every number is invented. Not a real subject.
+# Measure BrainSeg, BrainSegVol, Brain Segmentation Volume, 1150000.000000, mm^3
+# Measure BrainSegNotVent, BrainSegVolNotVent, Brain Segmentation Volume Without Ventricles, 1120000.000000, mm^3
+# Measure Mask, MaskVol, Mask Volume, 1650000.000000, mm^3
+# Measure EstimatedTotalIntraCranialVol, eTIV, Estimated Total Intracranial Volume, 1600000.000000, mm^3
+# SegVolFile mri/aparc.DKTatlas+aseg.deep.mgz
+# ColorTable FastSurfer_ColorLUT.tsv
+# NTableCols 10
+# ColHeaders  Index SegId NVoxels Volume_mm3 StructName normMean normStdDev normMin normMax normRange
+  1    4   13000  13000.000  Left-Lateral-Ventricle     30.0  12.0   9.0   90.0  81.0
+  2    5     500    500.000  Left-Inf-Lat-Vent          41.0  11.0  14.0   76.0  62.0
+  3   14    1600   1600.000  3rd-Ventricle              31.0  13.0  10.0   81.0  71.0
+  4   15    1900   1900.000  4th-Ventricle              27.0  14.0   8.0   83.0  75.0
+  5   17    4000   4000.000  Left-Hippocampus           71.0   8.0  38.0  101.0  63.0
+  6   43   12000  12000.000  Right-Lateral-Ventricle    29.0  12.0   9.0   88.0  79.0
+  7   44     500    500.000  Right-Inf-Lat-Vent         40.0  11.0  13.0   78.0  65.0
+  8   53    4200   4200.000  Right-Hippocampus          72.0   8.0  40.0  102.0  62.0
+  9 1006    1900   1900.000  ctx-lh-entorhinal          60.0   9.0  30.0   95.0  65.0
+ 10 1009   11000  11000.000  ctx-lh-inferiortemporal    61.0   9.0  30.0   96.0  66.0
+ 11 1015   10500  10500.000  ctx-lh-middletemporal      61.0   9.0  30.0   96.0  66.0
+ 12 2006    1850   1850.000  ctx-rh-entorhinal          60.0   9.0  30.0   95.0  65.0
+ 13 2009   10800  10800.000  ctx-rh-inferiortemporal    61.0   9.0  30.0   96.0  66.0
+ 14 2015   11500  11500.000  ctx-rh-middletemporal      61.0   9.0  30.0   96.0  66.0

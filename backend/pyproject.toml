@@ -27,6 +27,9 @@ dependencies = [
     # FastAPI pulling it in transitively; declared explicitly so a FastAPI
     # bump cannot silently remove it. (Phase 0 dependency audit.)
     "starlette==1.6.0",
+    # Reads the OASIS demographics spreadsheet (oasis_cross-sectional*.xlsx)
+    # for the cohort import CLI. Only that code path imports it.
+    "openpyxl==3.1.5",
 ]
 
 [dependency-groups]

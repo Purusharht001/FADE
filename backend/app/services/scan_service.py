@@ -13,11 +13,19 @@ from app.core.config import get_settings
 from app.core.exceptions import UnprocessableScanError
 from app.core.logging import get_logger
 from app.models.enums import DataSource, ExtractionMethod, ScanStatus
+from app.models.patient import Patient
 from app.models.scan import BiomarkerReading, FISResult, Scan
 from app.repositories import patient_repo
+from app.services.biomarker_derivation import DerivedBiomarkers
 from app.services.calibration import DataDomain, data_domain_for
 from app.services.fis_engine import ENGINE_VERSION
-from app.services.pipeline import PipelineResult, run_pipeline_from_file, run_pipeline_synthetic
+from app.services.pipeline import (
+    PipelineResult,
+    Provenance,
+    run_pipeline_from_biomarkers,
+    run_pipeline_from_file,
+    run_pipeline_synthetic,
+)
 
 logger = get_logger(__name__)
 
@@ -59,6 +67,8 @@ async def _persist_result(db: AsyncSession, scan: Scan, result: PipelineResult) 
 
     scan.status = ScanStatus.COMPLETED
     scan.failure_reason = None
+    scan.raw_volumes = result.raw_volumes
+    scan.qc_flags = result.qc_flags
     scan.calibration_version = fis.calibration_version
     scan.engine_version = ENGINE_VERSION
     await db.flush()
@@ -92,6 +102,44 @@ async def ensure_phantom_patient(db: AsyncSession, scan: Scan) -> None:
     )
     patient.source = DataSource.PHANTOM
     await db.flush()
+
+
+def ensure_real_data_patient(patient: Patient) -> None:
+    """The other half of the provenance invariant: real measurements are
+    never attached to a patient labelled PHANTOM.
+    """
+    if patient.source == DataSource.PHANTOM:
+        raise UnprocessableScanError(
+            "This patient is labelled PHANTOM (synthetic demo data). Real measurements "
+            "cannot be attached to it; create a patient with the real data source instead."
+        )
+
+
+async def process_derived_biomarkers(
+    db: AsyncSession,
+    scan: Scan,
+    derived: DerivedBiomarkers,
+    raw: dict | None,
+    provenance: Provenance,
+) -> Scan:
+    """Scores biomarkers measured outside this service and persists the
+    result exactly like the in-house path does.
+    """
+    scan.extraction_method = provenance.extraction_method
+    if provenance.external_subject_id is not None:
+        scan.external_subject_id = provenance.external_subject_id
+    scan.status = ScanStatus.RUNNING_INFERENCE
+    await db.flush()
+
+    result = run_pipeline_from_biomarkers(derived, raw, provenance)
+    logger.info(
+        "biomarker_scan_scored",
+        scan_id=str(scan.id),
+        extraction_method=provenance.extraction_method.value,
+        determinate=result.fis_output.determinate,
+        qc_flags=[flag.get("code") for flag in result.qc_flags],
+    )
+    return await _persist_result(db, scan, result)
 
 
 async def process_uploaded_scan(db: AsyncSession, scan: Scan, file_path: str) -> Scan:

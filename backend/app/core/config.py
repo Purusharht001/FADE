@@ -57,6 +57,30 @@ class Settings(BaseSettings):
     # with "domain": "real" is supplied here.
     calibration_file: str = "phantom.v0.json"
 
+    # --- Biomarker derivation from FreeSurfer / FastSurfer stats ---
+    # Regions whose ThickAvg is averaged, over both hemispheres, into the
+    # cortical_thickness input. Names as they appear in aparc.stats.
+    cortical_thickness_regions: list[str] = [
+        "entorhinal",
+        "parahippocampal",
+        "superiortemporal",
+        "middletemporal",
+        "inferiortemporal",
+    ]
+    # TODO(confirm): "unweighted" (plain mean of ThickAvg) was specified;
+    # "surface_area" weights each region by SurfArea. ML team's call.
+    cortical_thickness_weighting: Literal["unweighted", "surface_area"] = "unweighted"
+
+    # Physiological plausibility bounds, as (min, max). A value outside its
+    # bounds does not fail the scan: it raises a QC flag and the engine
+    # returns an indeterminate result. Initial bounds supplied by the team.
+    plausibility_icv_mm3: tuple[float, float] = (1.0e6, 2.2e6)
+    plausibility_hippocampus_total_mm3: tuple[float, float] = (2000.0, 12000.0)
+    plausibility_thickness_mm: tuple[float, float] = (1.0, 5.0)
+
+    # Upper size for one uploaded stats file. Real ones are 5-30 KB.
+    max_stats_upload_kb: int = 1024
+
     # --- File uploads ---
     max_upload_mb: int = 64
     upload_dir: str = "./data/uploads"

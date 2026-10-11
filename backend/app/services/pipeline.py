@@ -10,8 +10,12 @@ Entry points:
   `/scans/synthetic` endpoint, so the demo data is produced by the real
   pipeline rather than hand-rolled numbers.
 
-Both end in `evaluate_biomarkers`, the single place where measured values
-meet the calibration and the engine.
+- `run_pipeline_from_biomarkers`: the real-data path. Values measured
+  elsewhere (FreeSurfer / FastSurfer stats, a JSON body, a cohort CSV row)
+  arrive already derived, with their raw volumes and provenance.
+
+All three end in `evaluate_biomarkers`, the single place where measured
+values meet the calibration and the engine.
 """
 
 from collections.abc import Mapping, Sequence
@@ -23,8 +27,9 @@ import numpy as np
 
 from app.core.config import get_settings
 from app.core.exceptions import UnprocessableScanError
-from app.models.enums import BiomarkerKey
+from app.models.enums import BiomarkerKey, ExtractionMethod
 from app.services import preprocessing, synthetic_mri, volumetry
+from app.services.biomarker_derivation import DerivedBiomarkers
 from app.services.calibration import Calibration, DataDomain, get_calibration
 from app.services.fis_engine import FISOutput, calibration_mismatch_reasons, run_fis
 
@@ -39,6 +44,19 @@ class PipelineResult:
     abnormality: dict[BiomarkerKey, float | None]
     fis_output: FISOutput
     units: dict[BiomarkerKey, str] = field(default_factory=dict)
+    # Set by the real-data path; the in-house path measures no raw volumes.
+    raw_volumes: dict[str, Any] | None = None
+    qc_flags: list[dict[str, Any]] = field(default_factory=list)
+
+
+@dataclass(frozen=True, slots=True)
+class Provenance:
+    """Where a set of biomarker values came from."""
+
+    extraction_method: ExtractionMethod
+    data_domain: DataDomain
+    # A research identifier such as "OAS1_0001_MR1". Never PHI.
+    external_subject_id: str | None = None
 
 
 def abnormality_for(
@@ -90,6 +108,33 @@ def evaluate_biomarkers(
     return PipelineResult(
         biomarkers=present, abnormality=abnormality, fis_output=fis_output, units=present_units
     )
+
+
+def run_pipeline_from_biomarkers(
+    derived: DerivedBiomarkers,
+    raw: Mapping[str, Any] | None,
+    provenance: Provenance,
+    *,
+    calibration: Calibration | None = None,
+) -> PipelineResult:
+    """Runs the engine on biomarker values that were measured outside this
+    service. The one entry point for every real-data source, so they are
+    all scored, QC-gated and recorded identically.
+
+    `derived` holds the three engine inputs with their units and QC flags;
+    `raw` is what gets stored as the scan's raw volumes (defaults to the
+    raw volumes that came with `derived`).
+    """
+    result = evaluate_biomarkers(
+        derived.values,
+        derived.units,
+        data_domain=provenance.data_domain,
+        qc_flags=derived.qc_flags,
+        calibration=calibration,
+    )
+    result.raw_volumes = dict(raw if raw is not None else derived.raw_volumes)
+    result.qc_flags = [dict(flag) for flag in derived.qc_flags]
+    return result
 
 
 def _run_from_preprocessed(
