@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Form, Query, UploadFile
+from fastapi.concurrency import run_in_threadpool
 
 from app.api.deps import CurrentUser, DbSession
 from app.core.config import get_settings
@@ -15,7 +16,7 @@ from app.models.scan import Scan
 from app.repositories import patient_repo
 from app.schemas.biomarkers import ManualBiomarkersRequest
 from app.schemas.scan import ReviewRequest, ScanRead, SyntheticScanRequest
-from app.services import scan_service
+from app.services import dicom_ingest, scan_service, upload_validation, volumetry_providers
 from app.services.biomarker_derivation import (
     DerivedBiomarkers,
     canonical_unit,
@@ -26,10 +27,35 @@ from app.services.biomarker_derivation import (
 from app.services.calibration import data_domain_for
 from app.services.freesurfer_stats import StatsParseError, parse_stats_bytes
 from app.services.pipeline import Provenance
+from app.services.upload_validation import FileKind
+from app.services.volumetry_providers import VolumetryProvider
 
 router = APIRouter(prefix="/patients/{patient_id}/scans", tags=["scans"])
 
-_ALLOWED_SUFFIXES = {".nii", ".gz"}
+# What to tell someone who sent the NIfTI endpoint something else. Chosen
+# by what the file's content is, never by its name.
+_NOT_NIFTI_MESSAGE = {
+    FileKind.ZIP: (
+        "This is a .zip archive, not a NIfTI volume. Upload a zipped DICOM series to "
+        "/scans/upload-dicom instead."
+    ),
+    FileKind.DICOM: (
+        "This is a single DICOM file. Zip the whole series and upload it to "
+        "/scans/upload-dicom, or convert it to NIfTI first."
+    ),
+    FileKind.NIFTI_PAIR: (
+        "This is the header half of a two-file NIfTI/Analyze pair. Convert it to a single "
+        ".nii or .nii.gz file and upload that."
+    ),
+    FileKind.GZIP: "This gzip file does not contain a NIfTI volume.",
+    FileKind.UNKNOWN: "Only NIfTI volumes (.nii or .nii.gz) are accepted here.",
+}
+_NOT_ZIP_MESSAGE: dict[FileKind | None, str] = {
+    FileKind.NIFTI: "This is a NIfTI volume, not a .zip. Upload it to /scans/upload instead.",
+    FileKind.NIFTI_GZ: "This is a NIfTI volume, not a .zip. Upload it to /scans/upload instead.",
+    FileKind.DICOM: "This is a single DICOM file. Zip the whole series and upload the .zip.",
+    None: "Only a .zip archive of a DICOM series is accepted here.",
+}
 
 
 # Stats attached to a stored scan may come from FreeSurfer or FastSurfer.
@@ -85,6 +111,33 @@ async def _read_stats_form(
     return derive_from_stats(parsed)
 
 
+async def _create_scan_for_file(
+    db: DbSession,
+    patient: Patient,
+    nifti_path: Path,
+    provider: VolumetryProvider,
+    scan_date: datetime.date | None,
+    external_subject_id: str | None,
+) -> Scan:
+    """Records a stored, sanitised NIfTI as a scan and hands it to the
+    volumetry provider. If that fails inside the request the stored file is
+    removed: the failed scan row is rolled back, and a file with no row
+    would never be found again.
+    """
+    try:
+        scan = await patient_repo.create_scan(
+            db,
+            patient_id=patient.id,
+            scan_date=scan_date or datetime.date.today(),
+            file_path=str(nifti_path),
+            external_subject_id=external_subject_id,
+        )
+        return await volumetry_providers.submit_stored_scan(db, scan, nifti_path, provider)
+    except BaseException:
+        nifti_path.unlink(missing_ok=True)  # noqa: ASYNC240 - one-shot local unlink on the error path
+        raise
+
+
 @router.post("/upload", response_model=ScanRead, status_code=201)
 async def upload_scan(
     patient_id: uuid.UUID,
@@ -92,39 +145,89 @@ async def upload_scan(
     _current_user: CurrentUser,
     file: UploadFile,
     scan_date: Annotated[datetime.date | None, Query(alias="scanDate")] = None,
+    external_subject_id: Annotated[str | None, Query(alias="externalSubjectId")] = None,
 ) -> ScanRead:
-    await _require_patient(db, patient_id)
+    """Uploads one T1-weighted volume as NIfTI (.nii or .nii.gz).
+
+    What happens next depends on VOLUMETRY_PROVIDER: the scan is returned
+    `awaiting_volumetry` (external), `segmenting` (fastsurfer_docker; poll
+    the scan until it completes) or already scored (inhouse, PHANTOM
+    patients only).
+    """
+    patient = await _require_patient(db, patient_id)
     settings = get_settings()
+    provider = volumetry_providers.active_provider(settings)
+    # Before the body is read: a refused upload is never written to disk.
+    volumetry_providers.check_provider_accepts(provider, patient)
+    subject_id = _checked_subject_id(external_subject_id)
 
-    suffix = "".join(Path(file.filename or "").suffixes[-2:]) or ".nii.gz"
-    if not any(suffix.endswith(s) for s in _ALLOWED_SUFFIXES):
-        raise UnprocessableScanError("Only .nii or .nii.gz files are accepted.")
-
-    scan = await patient_repo.create_scan(
-        db, patient_id=patient_id, scan_date=scan_date or datetime.date.today(), file_path=None
+    incoming = upload_validation.incoming_dir(settings)
+    raw_path = incoming / upload_validation.new_upload_name(".upload")
+    await upload_validation.store_upload(
+        file, raw_path, settings.max_upload_mb * 1024 * 1024, settings.max_upload_mb
     )
+    try:
+        kind = await run_in_threadpool(upload_validation.detect_kind, raw_path)
+        if kind not in (FileKind.NIFTI, FileKind.NIFTI_GZ):
+            raise UnprocessableScanError(_NOT_NIFTI_MESSAGE[kind])
+        # nibabel chooses its reader from the suffix, so give the file the
+        # suffix its content calls for (never the one the client sent).
+        typed_path = raw_path.with_suffix(".nii.gz" if kind == FileKind.NIFTI_GZ else ".nii")
+        raw_path.rename(typed_path)
+        raw_path = typed_path
 
-    dest_dir = Path(settings.upload_dir)
-    dest_dir.mkdir(parents=True, exist_ok=True)  # noqa: ASYNC240 - one-shot idempotent mkdir, not worth a thread hop
-    dest_path = dest_dir / f"{scan.id}{suffix}"
+        nifti_path = Path(settings.upload_dir) / upload_validation.new_upload_name(".nii.gz")
+        await run_in_threadpool(upload_validation.sanitize_nifti, raw_path, nifti_path)
+    finally:
+        raw_path.unlink(missing_ok=True)
 
-    size = 0
-    max_bytes = settings.max_upload_mb * 1024 * 1024
-    with dest_path.open("wb") as f:
-        while chunk := await file.read(1024 * 1024):
-            size += len(chunk)
-            if size > max_bytes:
-                f.close()
-                dest_path.unlink(missing_ok=True)
-                raise UnprocessableScanError(
-                    f"File exceeds the {settings.max_upload_mb}MB upload limit."
-                )
-            f.write(chunk)
+    scan = await _create_scan_for_file(db, patient, nifti_path, provider, scan_date, subject_id)
+    return ScanRead.model_validate(scan)
 
-    scan.file_path = str(dest_path)
-    await db.flush()
 
-    scan = await scan_service.process_uploaded_scan(db, scan, str(dest_path))
+@router.post("/upload-dicom", response_model=ScanRead, status_code=201)
+async def upload_dicom_scan(
+    patient_id: uuid.UUID,
+    db: DbSession,
+    _current_user: CurrentUser,
+    file: UploadFile,
+    scan_date: Annotated[datetime.date | None, Query(alias="scanDate")] = None,
+    external_subject_id: Annotated[str | None, Query(alias="externalSubjectId")] = None,
+) -> ScanRead:
+    """Uploads one T1-weighted series as a .zip of DICOM files.
+
+    The series must already be anonymised: with REQUIRE_ANONYMISED_DICOM on
+    (the default) an archive whose identifying header tags are not blank is
+    rejected, and the response lists which tags. The DICOM is converted to
+    NIfTI and then deleted; only the NIfTI is kept.
+    """
+    patient = await _require_patient(db, patient_id)
+    settings = get_settings()
+    provider = volumetry_providers.active_provider(settings)
+    if provider == VolumetryProvider.INHOUSE:
+        # The in-house path is for phantom volumes, which are never DICOM.
+        raise UnprocessableScanError(volumetry_providers.INHOUSE_NOT_FOR_REAL_DATA)
+    volumetry_providers.check_provider_accepts(provider, patient)
+    subject_id = _checked_subject_id(external_subject_id)
+
+    work_dir = upload_validation.incoming_dir(settings) / upload_validation.new_upload_name("")
+    zip_path = work_dir / "upload.zip"
+    try:
+        await upload_validation.store_upload(
+            file, zip_path, settings.max_upload_mb * 1024 * 1024, settings.max_upload_mb
+        )
+        kind = await run_in_threadpool(upload_validation.detect_kind, zip_path)
+        if kind != FileKind.ZIP:
+            raise UnprocessableScanError(_NOT_ZIP_MESSAGE.get(kind, _NOT_ZIP_MESSAGE[None]))
+
+        converted = await run_in_threadpool(dicom_ingest.convert_dicom_zip, zip_path, work_dir)
+        nifti_path = Path(settings.upload_dir) / upload_validation.new_upload_name(".nii.gz")
+        await run_in_threadpool(upload_validation.sanitize_nifti, converted, nifti_path)
+    finally:
+        # The original DICOM never outlives the request, success or failure.
+        await run_in_threadpool(dicom_ingest.discard, work_dir)
+
+    scan = await _create_scan_for_file(db, patient, nifti_path, provider, scan_date, subject_id)
     return ScanRead.model_validate(scan)
 
 

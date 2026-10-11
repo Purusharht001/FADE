@@ -85,6 +85,50 @@ class Settings(BaseSettings):
     max_upload_mb: int = 64
     upload_dir: str = "./data/uploads"
 
+    # Gross sanity limits on an uploaded NIfTI volume. Technical, not
+    # clinical: they catch a header in the wrong units or a decompression
+    # bomb, not a scan that is merely low resolution.
+    nifti_voxel_mm_range: tuple[float, float] = (0.1, 10.0)
+    nifti_max_voxels: int = 512 * 512 * 512
+
+    # --- DICOM uploads ---
+    # With this on (the default), a DICOM whose identifying tags are not
+    # blank is rejected before conversion. Turn it off only for data that
+    # is already consented for identified use; values are never logged.
+    require_anonymised_dicom: bool = True
+    dicom_identifying_tags: list[str] = [
+        "PatientName",
+        "PatientID",
+        "PatientBirthDate",
+        "OtherPatientIDs",
+        "InstitutionName",
+        "ReferringPhysicianName",
+        "AccessionNumber",
+        "StudyDate",
+    ]
+    dicom_zip_max_files: int = 5000
+    dicom_zip_max_unpacked_mb: int = 2048
+    dicom_conversion_timeout_seconds: int = 600
+
+    # --- Volumetry provider: what happens to an uploaded scan file ---
+    # external          store it and wait for FreeSurfer stats to be attached
+    # fastsurfer_docker run FastSurfer in Docker as a background job
+    # inhouse           the phantom-tuned volumetry; PHANTOM patients only
+    volumetry_provider: Literal["external", "fastsurfer_docker", "inhouse"] = "external"
+
+    fastsurfer_image: str = "deepmi/fastsurfer:latest"
+    fastsurfer_use_gpu: bool = False
+    fastsurfer_timeout_seconds: int = 3 * 60 * 60
+    # FreeSurfer licence file on the host, mounted read-only into the container.
+    fs_license_path: str | None = None
+    # "uid:gid" the container runs as. Default: this process's own ids on
+    # POSIX, 1000:1000 on Windows (where Docker Desktop ignores ownership).
+    fastsurfer_docker_user: str | None = None
+    # Appended to the FastSurfer command line, e.g. ["--threads", "4"].
+    fastsurfer_extra_args: list[str] = []
+    # Where FastSurfer writes. Default: <upload_dir>/fastsurfer.
+    fastsurfer_output_dir: str | None = None
+
     @computed_field  # type: ignore[prop-decorator]
     @property
     def is_sqlite(self) -> bool:

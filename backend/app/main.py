@@ -19,9 +19,10 @@ from app.core.exceptions import (
 from app.core.logging import configure_logging, get_logger
 from app.core.security import InvalidTokenError
 from app.db.base import Base
-from app.db.session import dispose_engine, get_engine
+from app.db.session import dispose_engine, get_engine, get_session_factory
 from app.middleware.logging import RequestLoggingMiddleware
 from app.services.calibration import get_calibration
+from app.services.volumetry_providers import fail_interrupted_jobs
 
 configure_logging()
 logger = get_logger(__name__)
@@ -58,6 +59,15 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         logger.info("database_ready", mode="sqlite-autocreate")
     else:
         logger.info("database_ready", mode="managed-by-alembic")
+
+    # Background segmentation jobs do not survive a restart. Anything a
+    # previous process left in `segmenting` is marked failed so it can be
+    # recovered, instead of appearing to run forever.
+    try:
+        async with get_session_factory()() as session:
+            await fail_interrupted_jobs(session)
+    except Exception:  # noqa: BLE001 - e.g. Postgres not migrated yet; must not block startup
+        logger.warning("interrupted_job_sweep_skipped")
 
     yield
     await dispose_engine()
