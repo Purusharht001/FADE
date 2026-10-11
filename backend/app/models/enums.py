@@ -4,6 +4,9 @@ from enum import StrEnum
 class UserRole(StrEnum):
     CLINICIAN = "clinician"
     ADMIN = "admin"
+    # May read the research export (reference labels, ratings). Does not
+    # rate cases: a researcher has seen the answers.
+    RESEARCHER = "researcher"
 
 
 class Sex(StrEnum):

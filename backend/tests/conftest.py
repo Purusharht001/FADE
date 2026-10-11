@@ -8,9 +8,12 @@ from sqlalchemy.pool import StaticPool
 
 import app.models  # noqa: F401 - registers every mapped class on Base.metadata
 from app.core.config import get_settings
+from app.core.security import hash_password
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app as fastapi_app
+from app.models.enums import UserRole
+from app.repositories import user_repo
 
 TEST_DATABASE_URL = "sqlite+aiosqlite://"  # in-memory, unique per engine instance
 
@@ -88,6 +91,31 @@ async def db_session() -> AsyncGenerator[AsyncSession]:
         yield session
 
     await engine.dispose()
+
+
+async def login_as(
+    client: AsyncClient,
+    app_db: async_sessionmaker[AsyncSession],
+    role: UserRole,
+    email: str | None = None,
+) -> dict[str, str]:
+    """Test helper: creates a user with the given role directly in the
+    database (registration only ever creates clinicians) and returns auth
+    headers for it.
+    """
+    email = email or f"{role.value}@test.dev"
+    password = "testpassword123"  # noqa: S105 - test-only credential
+    async with app_db() as session:
+        await user_repo.create(
+            session,
+            email=email,
+            hashed_password=hash_password(password),
+            full_name=f"Test {role.value}",
+            role=role,
+        )
+        await session.commit()
+    resp = await client.post("/api/v1/auth/login", json={"email": email, "password": password})
+    return {"Authorization": f"Bearer {resp.json()['accessToken']}"}
 
 
 async def register_and_login(client: AsyncClient, email: str = "doc@test.dev") -> dict[str, str]:

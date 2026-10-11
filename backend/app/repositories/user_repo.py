@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import hash_password
+from app.models.enums import UserRole
 from app.models.user import User
 
 # The account every request resolves to when no bearer token is presented —
@@ -23,9 +24,21 @@ async def get_by_id(db: AsyncSession, user_id: uuid.UUID) -> User | None:
     return result.scalar_one_or_none()
 
 
-async def create(db: AsyncSession, *, email: str, hashed_password: str, full_name: str) -> User:
+async def create(
+    db: AsyncSession,
+    *,
+    email: str,
+    hashed_password: str,
+    full_name: str,
+    role: UserRole = UserRole.CLINICIAN,
+) -> User:
     user = User(
-        email=email, hashed_password=hashed_password, full_name=full_name, patients_created=[]
+        email=email,
+        hashed_password=hashed_password,
+        full_name=full_name,
+        role=role,
+        is_active=True,
+        patients_created=[],
     )
     db.add(user)
     await db.flush()

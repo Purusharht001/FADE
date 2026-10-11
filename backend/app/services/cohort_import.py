@@ -38,7 +38,7 @@ from app.core.identifiers import validate_external_subject_id
 from app.core.logging import get_logger
 from app.models.enums import DataSource, ExtractionMethod, Sex
 from app.repositories import patient_repo
-from app.services import scan_service
+from app.services import audit, scan_service
 from app.services.biomarker_derivation import (
     DerivedBiomarkers,
     derive_from_stats,
@@ -512,6 +512,21 @@ async def import_screened(
         if options.dry_run:
             await db.rollback()
         else:
+            await audit.record(
+                db,
+                actor=None,
+                action=audit.ACTION_COHORT_IMPORT,
+                entity_type="cohort",
+                detail={
+                    "source": options.source.value,
+                    "imported": summary.imported,
+                    "skipped_no_label": summary.skipped_no_label,
+                    "skipped_mr2": summary.skipped_mr2,
+                    "skipped_existing": summary.skipped_existing,
+                    "skipped_invalid": summary.skipped_invalid,
+                    "qc_flagged": summary.qc_flagged,
+                },
+            )
             await db.commit()
     except Exception:
         await db.rollback()

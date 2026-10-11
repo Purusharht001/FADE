@@ -24,6 +24,7 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 INITIAL_REVISION = "d65864356d55"
 PROVENANCE_REVISION = "002753d4af4c"
 ENGINE_CONTRACT_REVISION = "87e388644744"
+STUDY_REVISION = "ef8721d5b1d9"
 
 
 @pytest.fixture
@@ -179,6 +180,58 @@ class TestEngineContractMigration:
         assert "determinate" not in columns
         assert columns["stage"][3] == 1  # NOT NULL again
         assert scans == 2
+
+
+class TestStudyAndAuditMigration:
+    def test_tables_are_created_and_removed(self, alembic_db):
+        cfg, db_path = alembic_db
+        command.upgrade(cfg, STUDY_REVISION)
+
+        con = sqlite3.connect(db_path)
+        tables = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        assert {"clinician_ratings", "audit_log"} <= tables
+        now = datetime.datetime.now(datetime.UTC).isoformat()
+        with con:
+            con.execute(
+                "INSERT INTO users (id, email, hashed_password, full_name, role, is_active, "
+                "created_at, updated_at) VALUES (?, 'r@test.dev', 'x', 'R', 'RESEARCHER', 1, ?, ?)",
+                (uuid.uuid4().hex, now, now),
+            )
+        con.close()
+
+        command.downgrade(cfg, ENGINE_CONTRACT_REVISION)
+
+        con = sqlite3.connect(db_path)
+        tables = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        roles = [r[0] for r in con.execute("SELECT role FROM users")]
+        con.close()
+        assert not {"clinician_ratings", "audit_log"} & tables
+        # The older code has no RESEARCHER role to load.
+        assert roles == ["CLINICIAN"]
+
+    def test_one_rating_per_rater_per_scan_is_enforced_by_the_database(self, alembic_db):
+        cfg, db_path = alembic_db
+        command.upgrade(cfg, STUDY_REVISION)
+        ids = insert_legacy_cohort(db_path)
+        now = datetime.datetime.now(datetime.UTC).isoformat()
+        rater = uuid.uuid4().hex
+        con = sqlite3.connect(db_path)
+        insert = (
+            "INSERT INTO clinician_ratings (id, scan_id, rater_id, stage_called, borderline, "
+            "confidence, created_at, updated_at) VALUES (?, ?, ?, 'MCI', 0, ?, ?, ?)"
+        )
+        with con:
+            con.execute(
+                "INSERT INTO users (id, email, hashed_password, full_name, role, is_active, "
+                "created_at, updated_at) VALUES (?, 'c@test.dev', 'x', 'C', 'CLINICIAN', 1, ?, ?)",
+                (rater, now, now),
+            )
+            con.execute(insert, (uuid.uuid4().hex, ids["scan:seeded"], rater, 3, now, now))
+        with pytest.raises(sqlite3.IntegrityError):
+            con.execute(insert, (uuid.uuid4().hex, ids["scan:seeded"], rater, 4, now, now))
+        with pytest.raises(sqlite3.IntegrityError):  # confidence must be 1-5
+            con.execute(insert, (uuid.uuid4().hex, ids["scan:failed_upload"], rater, 9, now, now))
+        con.close()
 
 
 class TestMigrationsMatchModels:

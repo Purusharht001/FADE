@@ -16,7 +16,13 @@ from app.models.scan import Scan
 from app.repositories import patient_repo
 from app.schemas.biomarkers import ManualBiomarkersRequest
 from app.schemas.scan import ReviewRequest, ScanRead, SyntheticScanRequest
-from app.services import dicom_ingest, scan_service, upload_validation, volumetry_providers
+from app.services import (
+    audit,
+    dicom_ingest,
+    scan_service,
+    upload_validation,
+    volumetry_providers,
+)
 from app.services.biomarker_derivation import (
     DerivedBiomarkers,
     canonical_unit,
@@ -348,7 +354,7 @@ async def attach_stats_to_scan(
     patient_id: uuid.UUID,
     scan_id: uuid.UUID,
     db: DbSession,
-    _current_user: CurrentUser,
+    current_user: CurrentUser,
     aseg: UploadFile,
     lh_aparc: UploadFile | None = None,
     rh_aparc: UploadFile | None = None,
@@ -379,6 +385,7 @@ async def attach_stats_to_scan(
 
     subject_id = _checked_subject_id(external_subject_id)
     derived = await _read_stats_form(aseg, lh_aparc, rh_aparc)
+    previous_status = scan.status
     scan = await scan_service.process_derived_biomarkers(
         db,
         scan,
@@ -389,6 +396,19 @@ async def attach_stats_to_scan(
             data_domain=data_domain_for(patient.source),
             external_subject_id=subject_id,
         ),
+    )
+    await audit.record(
+        db,
+        actor=current_user,
+        action=audit.ACTION_STATS_ATTACHED,
+        entity_type="scan",
+        entity_id=scan.id,
+        detail={
+            "extraction_method": extraction_method.value,
+            "previous_status": previous_status.value,
+            "determinate": scan.fis_result.determinate if scan.fis_result else None,
+            "qc_flags": [str(flag.get("code")) for flag in scan.qc_flags or []],
+        },
     )
     return ScanRead.model_validate(scan)
 
@@ -437,5 +457,17 @@ async def review_scan(
         datetime.datetime.now(datetime.UTC).isoformat() if payload.reviewed else None
     )
     await db.flush()
+    await audit.record(
+        db,
+        actor=current_user,
+        action=audit.ACTION_SCAN_REVIEW,
+        entity_type="scan",
+        entity_id=scan.id,
+        detail={
+            "reviewed": payload.reviewed,
+            "stage": scan.fis_result.stage.value if scan.fis_result.stage else None,
+            "determinate": scan.fis_result.determinate,
+        },
+    )
     await db.refresh(scan, attribute_names=["fis_result"])
     return ScanRead.model_validate(scan)
