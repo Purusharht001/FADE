@@ -3,13 +3,14 @@ import uuid
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Form, Query, UploadFile
+from fastapi import APIRouter, Form, Query, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
 
 from app.api.deps import CurrentUser, DbSession
 from app.core.config import get_settings
 from app.core.exceptions import ConflictError, NotFoundError, UnprocessableScanError
 from app.core.identifiers import validate_external_subject_id
+from app.core.rate_limit import limiter, upload_rate_limit
 from app.models.enums import BiomarkerKey, ExtractionMethod, ScanStatus
 from app.models.patient import Patient
 from app.models.scan import Scan
@@ -145,7 +146,9 @@ async def _create_scan_for_file(
 
 
 @router.post("/upload", response_model=ScanRead, status_code=201)
+@limiter.limit(upload_rate_limit)
 async def upload_scan(
+    request: Request,
     patient_id: uuid.UUID,
     db: DbSession,
     _current_user: CurrentUser,
@@ -192,7 +195,9 @@ async def upload_scan(
 
 
 @router.post("/upload-dicom", response_model=ScanRead, status_code=201)
+@limiter.limit(upload_rate_limit)
 async def upload_dicom_scan(
+    request: Request,
     patient_id: uuid.UUID,
     db: DbSession,
     _current_user: CurrentUser,
@@ -238,7 +243,9 @@ async def upload_dicom_scan(
 
 
 @router.post("/freesurfer", response_model=ScanRead, status_code=201)
+@limiter.limit(upload_rate_limit)
 async def create_scan_from_freesurfer_stats(
+    request: Request,
     patient_id: uuid.UUID,
     db: DbSession,
     _current_user: CurrentUser,
@@ -350,7 +357,9 @@ async def create_scan_from_biomarkers(
 
 
 @router.post("/{scan_id}/stats", response_model=ScanRead)
+@limiter.limit(upload_rate_limit)
 async def attach_stats_to_scan(
+    request: Request,
     patient_id: uuid.UUID,
     scan_id: uuid.UUID,
     db: DbSession,

@@ -8,6 +8,7 @@ from sqlalchemy.pool import StaticPool
 
 import app.models  # noqa: F401 - registers every mapped class on Base.metadata
 from app.core.config import get_settings
+from app.core.rate_limit import limiter
 from app.core.security import hash_password
 from app.db.base import Base
 from app.db.session import get_db
@@ -28,6 +29,28 @@ def _isolate_upload_dir(tmp_path_factory: pytest.TempPathFactory) -> None:
     silently accumulates files in the working tree's data/uploads/.
     """
     get_settings().upload_dir = str(tmp_path_factory.mktemp("uploads"))
+
+
+@pytest.fixture(autouse=True)
+def _rate_limiting_off():
+    """Every test request comes from the same client address, so the
+    per-IP limits would start refusing requests partway through the suite.
+    They are switched off here and switched back on, with fresh counters,
+    by the tests that are about rate limiting (the `rate_limits` fixture).
+    """
+    limiter.enabled = False
+    yield
+    limiter.enabled = False
+
+
+@pytest.fixture
+def rate_limits():
+    """Rate limiting on, starting from zero."""
+    limiter.reset()
+    limiter.enabled = True
+    yield limiter
+    limiter.enabled = False
+    limiter.reset()
 
 
 @pytest_asyncio.fixture

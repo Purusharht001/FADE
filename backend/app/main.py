@@ -2,11 +2,11 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from slowapi.util import get_remote_address
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.v1.router import api_router
 from app.core.config import get_settings
@@ -14,11 +14,15 @@ from app.core.exceptions import (
     AppError,
     app_error_handler,
     invalid_token_handler,
+    rate_limit_handler,
     unhandled_exception_handler,
+    validation_error_handler,
 )
 from app.core.logging import configure_logging, get_logger
+from app.core.rate_limit import DefaultRateLimitMiddleware, limiter
 from app.core.security import InvalidTokenError
-from app.db.base import Base
+from app.core.startup_checks import ensure_upload_dir_not_served, log_security_posture
+from app.db.schema import ensure_schema
 from app.db.session import dispose_engine, get_engine, get_session_factory
 from app.middleware.logging import RequestLoggingMiddleware
 from app.services.calibration import get_calibration
@@ -27,12 +31,12 @@ from app.services.volumetry_providers import fail_interrupted_jobs
 configure_logging()
 logger = get_logger(__name__)
 
-limiter = Limiter(key_func=get_remote_address)
-
 
 @asynccontextmanager
-async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
+    ensure_upload_dir_not_served(application, settings)
+    log_security_posture(settings)
 
     # Fail fast on a malformed calibration file rather than on the first
     # scan; an incomplete (null) one is allowed and logged.
@@ -47,18 +51,26 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         unset_values=len(calibration.missing),
     )
 
-    if settings.is_sqlite:
-        # Zero-config local/dev/demo path: create tables directly. Postgres
-        # deployments should run `alembic upgrade head` instead (see
-        # backend/README.md) so schema changes are tracked as migrations.
-        import app.models  # noqa: F401 - registers models on Base.metadata
+    # An empty SQLite file is created and stamped (the zero-config local
+    # path); a database that is behind the models is refused with the
+    # command that fixes it. See app/db/schema.py.
+    import app.models  # noqa: F401 - registers models on Base.metadata
 
-        engine = get_engine()
-        async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        logger.info("database_ready", mode="sqlite-autocreate")
-    else:
-        logger.info("database_ready", mode="managed-by-alembic")
+    try:
+        async with get_engine().begin() as conn:
+            state = await conn.run_sync(
+                lambda sync_conn: ensure_schema(sync_conn, create_if_empty=settings.is_sqlite)
+            )
+    except SQLAlchemyError:
+        if settings.is_sqlite:
+            raise
+        # A database that is unreachable at startup is reported, not fatal:
+        # the server came up without checking before, and still does.
+        logger.warning("database_schema_check_skipped", reason="database unreachable")
+        state = "unchecked"
+    if state == "empty":
+        logger.warning("database_empty", detail="Run `alembic upgrade head` to create the schema.")
+    logger.info("database_ready", schema=state)
 
     # Background segmentation jobs do not survive a restart. Anything a
     # previous process left in `segmenting` is marked failed so it can be
@@ -93,11 +105,16 @@ def create_app() -> FastAPI:
     # of the handler's own narrower parameter type, so these are safe — a well-known
     # false positive against Starlette's stub, not a real type error.
     app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(RateLimitExceeded, rate_limit_handler)  # type: ignore[arg-type]
     app.add_exception_handler(AppError, app_error_handler)  # type: ignore[arg-type]
     app.add_exception_handler(InvalidTokenError, invalid_token_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(RequestValidationError, validation_error_handler)  # type: ignore[arg-type]
     app.add_exception_handler(Exception, unhandled_exception_handler)
 
+    # Middleware runs outermost-last-added. Rate limiting is added first so
+    # that it sits inside CORS: a 429 then still carries the CORS headers a
+    # browser needs in order to show it as a 429 and not as a network error.
+    app.add_middleware(DefaultRateLimitMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_allow_origins,

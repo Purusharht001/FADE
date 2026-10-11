@@ -1,8 +1,12 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, computed_field
+from pydantic import Field, computed_field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# The placeholder signing key. Usable for local development only: anyone
+# who has read this repository can forge a token signed with it.
+DEFAULT_SECRET_KEY = "dev-only-insecure-secret-change-me-via-SECRET_KEY-env-var"  # noqa: S105
 
 
 class Settings(BaseSettings):
@@ -13,7 +17,14 @@ class Settings(BaseSettings):
     without code changes.
     """
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        # A settings error is printed at startup. Without this, pydantic
+        # includes the rejected values, SECRET_KEY among them.
+        hide_input_in_errors=True,
+    )
 
     # --- App metadata ---
     app_name: str = "FADE API"
@@ -30,18 +41,31 @@ class Settings(BaseSettings):
 
     # --- Security / auth ---
     secret_key: str = Field(
-        default="dev-only-insecure-secret-change-me-via-SECRET_KEY-env-var",
+        default=DEFAULT_SECRET_KEY,
         description="HMAC signing key for JWTs. MUST be overridden in production.",
     )
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 12
     refresh_token_expire_minutes: int = 60 * 24 * 7
 
+    # required  every request needs a bearer token (default in production)
+    # demo      a request with no token acts as one shared demo clinician
+    #           (default elsewhere; refused outright in production)
+    # Leave unset to take the default for the environment.
+    auth_mode: Literal["required", "demo"] | None = None
+    # Whether POST /auth/register is open. Unset means: open in demo mode,
+    # closed when auth is required, where an open sign-up form would let
+    # anyone create a clinician account. Accounts are then made with
+    # scripts/create_user.py.
+    allow_self_registration: bool | None = None
+
     # --- CORS ---
     cors_allow_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
-    # --- Rate limiting ---
+    # --- Rate limiting (per client IP) ---
     rate_limit_default: str = "120/minute"
+    # Tighter limit for endpoints that accept files, which are the costly ones.
+    upload_rate_limit: str = "20/minute"
 
     # --- Clinical thresholds (kept configurable, not magic numbers buried in services) ---
     # TODO(clinical: C6) -- scale and polarity differ from the specified
@@ -128,6 +152,44 @@ class Settings(BaseSettings):
     fastsurfer_extra_args: list[str] = []
     # Where FastSurfer writes. Default: <upload_dir>/fastsurfer.
     fastsurfer_output_dir: str | None = None
+
+    @field_validator(
+        "auth_mode",
+        "allow_self_registration",
+        "fs_license_path",
+        "fastsurfer_docker_user",
+        "fastsurfer_output_dir",
+        mode="before",
+    )
+    @classmethod
+    def _blank_is_unset(cls, value: object) -> object:
+        """`AUTH_MODE=` in an env file or a compose file means "not set"."""
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @model_validator(mode="after")
+    def _resolve_security_defaults(self) -> "Settings":
+        production = self.environment == "production"
+        if self.auth_mode is None:
+            self.auth_mode = "required" if production else "demo"
+        if self.allow_self_registration is None:
+            self.allow_self_registration = self.auth_mode == "demo"
+
+        # Raised while settings load, which is before the app object exists:
+        # a production deployment with either mistake does not start.
+        if production and self.auth_mode == "demo":
+            raise ValueError(
+                "AUTH_MODE=demo is not allowed with ENVIRONMENT=production: demo mode lets "
+                "every unauthenticated request act as a clinician. Set AUTH_MODE=required, or "
+                "run with ENVIRONMENT=development for a demo."
+            )
+        if production and self.secret_key == DEFAULT_SECRET_KEY:
+            raise ValueError(
+                "SECRET_KEY is still the development placeholder with ENVIRONMENT=production. "
+                "Anyone could forge a login token. Set SECRET_KEY to a random value."
+            )
+        return self
 
     @computed_field  # type: ignore[prop-decorator]
     @property

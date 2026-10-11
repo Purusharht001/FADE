@@ -5,6 +5,7 @@ from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.core.exceptions import ForbiddenError, UnauthorizedError
 from app.core.security import TokenType, decode_token
 from app.db.session import get_db
@@ -22,12 +23,13 @@ async def get_current_user(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer_scheme)],
 ) -> User:
     if credentials is None:
-        # No login flow is wired up in the frontend right now — every
-        # unauthenticated request resolves to a shared default account
-        # instead of being rejected, so the app is usable without a
-        # working auth setup. The JWT/login machinery (this function's
-        # other branch, /auth/register, /auth/login) still works normally
-        # for anyone who does send a real bearer token.
+        if get_settings().auth_mode != "demo":
+            raise UnauthorizedError("Authentication is required. Send a bearer token.")
+        # AUTH_MODE=demo: a request with no token acts as one shared demo
+        # clinician, so the dashboard works before a login screen exists.
+        # Settings refuse this mode in production. A request that does send
+        # a token is authenticated as that user in either mode, and role
+        # checks apply in both.
         return await user_repo.get_or_create_default(db)
 
     payload = decode_token(credentials.credentials, TokenType.ACCESS)

@@ -23,7 +23,13 @@ services:
       db:
         condition: service_healthy
     environment:
-      ENVIRONMENT: production
+      # production (the default) requires a bearer token on every request
+      # and refuses the placeholder SECRET_KEY. The frontend has no login
+      # screen yet, so a demo of the full stack needs ENVIRONMENT=development
+      # in .env, which selects AUTH_MODE=demo. Never run real patient data
+      # that way. See docs/REAL_DATA_RUNBOOK.md.
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      AUTH_MODE: ${AUTH_MODE:-}
       DEBUG: "false"
       DATABASE_URL: postgresql+asyncpg://fade:fade@db:5432/fade
       SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env before running docker compose}

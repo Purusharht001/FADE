@@ -1,6 +1,9 @@
 from fastapi import Request, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from slowapi.errors import RateLimitExceeded
 
+from app.core.rate_limit import rate_limited_response
 from app.core.security import InvalidTokenError
 
 
@@ -74,6 +77,26 @@ async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
 
 async def invalid_token_handler(request: Request, exc: InvalidTokenError) -> JSONResponse:
     return _error_response(status.HTTP_401_UNAUTHORIZED, "invalid_token", str(exc))
+
+
+async def validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    """FastAPI's default 422 body repeats the rejected input back to the
+    caller. A request body here can hold a subject identifier or a
+    clinician's free-text note, so only the location, type and message of
+    each error are returned. The `detail` list keeps its usual shape.
+    """
+    errors = [
+        {"type": error.get("type"), "loc": list(error.get("loc", ())), "msg": error.get("msg")}
+        for error in exc.errors()
+    ]
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, content={"detail": errors}
+    )
+
+
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+    """A route's own limit (`@limiter.limit`) was exceeded."""
+    return rate_limited_response(str(exc.detail))
 
 
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:

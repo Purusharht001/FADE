@@ -3,7 +3,8 @@ import uuid
 from fastapi import APIRouter
 
 from app.api.deps import CurrentUser, DbSession
-from app.core.exceptions import ConflictError, UnauthorizedError
+from app.core.config import get_settings
+from app.core.exceptions import ConflictError, ForbiddenError, UnauthorizedError
 from app.core.security import (
     TokenType,
     create_access_token,
@@ -20,6 +21,10 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 @router.post("/register", response_model=UserRead, status_code=201)
 async def register(payload: UserRegister, db: DbSession) -> UserRead:
+    if not get_settings().allow_self_registration:
+        raise ForbiddenError(
+            "Self-registration is disabled on this server. Ask an administrator for an account."
+        )
     existing = await user_repo.get_by_email(db, payload.email)
     if existing is not None:
         raise ConflictError("An account with this email already exists.")
