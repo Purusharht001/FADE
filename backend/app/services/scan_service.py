@@ -12,16 +12,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.exceptions import UnprocessableScanError
 from app.core.logging import get_logger
-from app.models.enums import DataSource, ExtractionMethod, ScanStatus
+from app.models.enums import BiomarkerKey, DataSource, ExtractionMethod, ScanStatus
 from app.models.patient import Patient
 from app.models.scan import BiomarkerReading, FISResult, Scan
 from app.repositories import patient_repo
 from app.services.biomarker_derivation import DerivedBiomarkers
-from app.services.calibration import DataDomain, data_domain_for
+from app.services.calibration import Calibration, DataDomain, data_domain_for
 from app.services.fis_engine import ENGINE_VERSION
 from app.services.pipeline import (
     PipelineResult,
     Provenance,
+    evaluate_biomarkers,
     run_pipeline_from_biomarkers,
     run_pipeline_from_file,
     run_pipeline_synthetic,
@@ -139,6 +140,33 @@ async def process_derived_biomarkers(
         determinate=result.fis_output.determinate,
         qc_flags=[flag.get("code") for flag in result.qc_flags],
     )
+    return await _persist_result(db, scan, result)
+
+
+async def rescore_scan(
+    db: AsyncSession, scan: Scan, patient: Patient, *, calibration: Calibration | None = None
+) -> Scan:
+    """Re-runs the engine on a scan's stored biomarker readings under the
+    active calibration, replacing its result. Nothing is re-measured: the
+    values, their units, the raw volumes and the QC flags stay as stored.
+    A biomarker that was never measured is still missing afterwards.
+    """
+    values: dict[BiomarkerKey, float | None] = dict.fromkeys(BiomarkerKey)
+    units: dict[BiomarkerKey, str] = {}
+    for reading in scan.biomarkers:
+        values[reading.key] = reading.value
+        units[reading.key] = reading.unit
+    qc_flags = [dict(flag) for flag in scan.qc_flags or []]
+
+    result = evaluate_biomarkers(
+        values,
+        units,
+        data_domain=data_domain_for(patient.source),
+        qc_flags=qc_flags,
+        calibration=calibration,
+    )
+    result.raw_volumes = scan.raw_volumes
+    result.qc_flags = qc_flags
     return await _persist_result(db, scan, result)
 
 

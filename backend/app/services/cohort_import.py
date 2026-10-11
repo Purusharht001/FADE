@@ -78,6 +78,10 @@ class CohortImportError(Exception):
 class ImportOptions:
     dry_run: bool = False
     # Fail the whole import, before writing anything, if any row lacks a CDR.
+    # TODO(confirm): rows with no CDR are always skipped and counted, as
+    # specified, so `--require-label` was read as the stricter "refuse to
+    # run at all if any label is missing". If it was meant to be the switch
+    # that turns the skipping on, this is the one place to change.
     require_label: bool = False
     include_mr2: bool = False
     source: DataSource = DataSource.OASIS
@@ -324,6 +328,11 @@ class _Screening:
 
 
 def _derived_from_csv_row(row: dict[str, Any]) -> DerivedBiomarkers:
+    # TODO(confirm): `hipp_norm` is taken to be hippocampus / ICV x 1000
+    # (per-mille of ICV) and `vbr` to be a unitless ratio, matching
+    # biomarker_derivation.py. A `hipp_norm` on another scale is caught by
+    # the consistency flag when `icv_mm3` and `hipp_mm3` are present, but a
+    # `vbr` in percent would not be: confirm the CSV's units.
     icv = _positive_or_none(row, "icv_mm3")
     hipp = _positive_or_none(row, "hipp_mm3")
     hipp_norm = _positive_or_none(row, "hipp_norm")

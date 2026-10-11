@@ -23,7 +23,7 @@ ALTER TABLE statements.
 """
 from typing import Sequence, Union
 
-from alembic import op
+from alembic import context, op
 import sqlalchemy as sa
 
 
@@ -74,7 +74,10 @@ def upgrade() -> None:
 
     # C4: a result with no fired rule was never a CN finding. JSON equality
     # is not portable across SQLite and PostgreSQL, so select and compare
-    # in Python; the table holds one row per scan.
+    # in Python; the table holds one row per scan. `--sql` (offline) mode
+    # has no connection to read from, so this correction is skipped there.
+    if context.is_offline_mode():
+        return
     bind = op.get_bind()
     rows = bind.execute(sa.select(fis_results.c.id, fis_results.c.fired_rules)).fetchall()
     no_rule_ids = [row.id for row in rows if not row.fired_rules]

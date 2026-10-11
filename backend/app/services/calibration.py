@@ -23,6 +23,7 @@ set name) is different from one that is incomplete: it raises
 
 import json
 import math
+import re
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -36,6 +37,10 @@ CALIBRATION_DIR = Path(__file__).resolve().parents[1] / "calibration"
 SUPPORTED_SCHEMA_VERSION = 1
 
 Trapezoid = tuple[float, float, float, float]
+
+# A version label is written to fixed-width columns and to the audit log,
+# which accepts only code-like tokens.
+_VERSION_PATTERN = re.compile(r"^[A-Za-z0-9_.:\-]{1,64}$")
 
 
 class DataDomain(StrEnum):
@@ -165,8 +170,12 @@ def parse_calibration(raw: Any, path: Path) -> Calibration:
         raise _fail(path, f"schema_version must be {SUPPORTED_SCHEMA_VERSION}.")
 
     version = raw.get("version")
-    if not isinstance(version, str) or not version.strip():
-        raise _fail(path, "`version` must be a non-empty string.")
+    if not isinstance(version, str) or not _VERSION_PATTERN.fullmatch(version):
+        raise _fail(
+            path,
+            "`version` must be 1-64 characters of letters, digits, '_', '.', ':' or '-' "
+            '(for example "real.v1"). It is stored on every result and in the audit log.',
+        )
     try:
         domain = DataDomain(str(raw.get("domain")))
     except ValueError as exc:
