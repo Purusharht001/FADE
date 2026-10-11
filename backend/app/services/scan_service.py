@@ -15,7 +15,7 @@ from app.core.logging import get_logger
 from app.models.enums import DataSource, ExtractionMethod, ScanStatus
 from app.models.scan import BiomarkerReading, FISResult, Scan
 from app.repositories import patient_repo
-from app.services.biomarkers import BIOMARKER_DEFS, CALIBRATION_VERSION
+from app.services.calibration import DataDomain, data_domain_for
 from app.services.fis_engine import ENGINE_VERSION
 from app.services.pipeline import PipelineResult, run_pipeline_from_file, run_pipeline_synthetic
 
@@ -27,7 +27,7 @@ async def _persist_result(db: AsyncSession, scan: Scan, result: PipelineResult) 
         BiomarkerReading(
             key=key,
             value=value,
-            unit=BIOMARKER_DEFS[key].unit,
+            unit=result.units[key],
             abnormality=result.abnormality[key],
         )
         for key, value in result.biomarkers.items()
@@ -40,6 +40,10 @@ async def _persist_result(db: AsyncSession, scan: Scan, result: PipelineResult) 
         confidence=fis.confidence,
         uncertainty=fis.uncertainty,
         needs_review=fis.needs_review,
+        determinate=fis.determinate,
+        indeterminate_reason=fis.indeterminate_reason,
+        severity=fis.severity,
+        calibration_version=fis.calibration_version,
         membership={stage.value: degree for stage, degree in fis.membership.items()},
         fired_rules=[
             {
@@ -55,7 +59,7 @@ async def _persist_result(db: AsyncSession, scan: Scan, result: PipelineResult) 
 
     scan.status = ScanStatus.COMPLETED
     scan.failure_reason = None
-    scan.calibration_version = CALIBRATION_VERSION
+    scan.calibration_version = fis.calibration_version
     scan.engine_version = ENGINE_VERSION
     await db.flush()
     await db.refresh(scan, attribute_names=["biomarkers", "fis_result"])
@@ -94,8 +98,13 @@ async def process_uploaded_scan(db: AsyncSession, scan: Scan, file_path: str) ->
     scan.extraction_method = ExtractionMethod.INHOUSE_PHANTOM
     scan.status = ScanStatus.PREPROCESSING
     await db.flush()
+    patient = await patient_repo.get_patient_only(db, scan.patient_id)
+    # The in-house volumetry is tuned to the phantom. A file belonging to
+    # any other patient is scored as real data, which the engine will not
+    # stage under a phantom calibration.
+    data_domain = data_domain_for(patient.source) if patient else DataDomain.REAL
     try:
-        result = run_pipeline_from_file(file_path)
+        result = run_pipeline_from_file(file_path, data_domain=data_domain)
     except UnprocessableScanError as exc:
         scan.status = ScanStatus.FAILED
         scan.failure_reason = str(exc)

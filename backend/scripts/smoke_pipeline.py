@@ -14,6 +14,7 @@ for severity in (0.0, 0.15, 0.3, 0.45, 0.5, 0.55, 0.7, 0.85, 1.0):
         f"HV={result.biomarkers['hippocampal_volume']:.2f}mL  "
         f"VBR={result.biomarkers['ventricle_brain_ratio']:.2f}%  "
         f"CT={result.biomarkers['cortical_thickness']:.2f}mm  "
-        f"-> stage={fis.stage.value} conf={fis.confidence:.1f}% unc={fis.uncertainty:.1f}% "
+        f"-> stage={fis.stage.value if fis.stage else 'indeterminate'} "
+        f"severity={fis.severity} conf={fis.confidence:.1f}% unc={fis.uncertainty:.1f}% "
         f"review={fis.needs_review} membership={membership}"
     )

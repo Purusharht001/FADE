@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "version": "phantom.v0",
+  "domain": "phantom",
+  "provisional": true,
+  "notes": "Breakpoints fitted to the synthetic 2 mm phantom in app/services/synthetic_mri.py, moved here unchanged from app/services/biomarkers.py. Valid only for values measured by the in-house phantom volumetry. They are not clinical thresholds: the engine refuses to stage real data with this file.",
+  "biomarkers": {
+    "hippocampal_volume": {
+      "unit": "mL",
+      "description": "Bilateral hippocampal volume in mL, as measured on the synthetic phantom. Not normalised for intracranial volume. Atrophy here is one of the earliest structural markers of AD-related neurodegeneration.",
+      "normal_range": [3.0, 4.5],
+      "display_range": [0.0, 6.5],
+      "sets": {
+        "low": [0.0, 0.0, 2.0, 2.6],
+        "borderline": [2.2, 2.6, 3.0, 3.4],
+        "normal": [3.0, 3.6, 6.0, 6.0]
+      }
+    },
+    "ventricle_brain_ratio": {
+      "unit": "%",
+      "description": "Lateral ventricle volume as a percentage of total brain volume. Enlargement is a proxy for global tissue loss (ex-vacuo dilation). Percentages are calibrated to this project's synthetic phantom, not literal clinical VBR.",
+      "normal_range": [0.0, 0.5],
+      "display_range": [0.0, 1.6],
+      "sets": {
+        "normal": [0.0, 0.0, 0.3, 0.5],
+        "borderline": [0.35, 0.5, 0.75, 0.95],
+        "high": [0.75, 0.95, 3.0, 3.0]
+      }
+    },
+    "cortical_thickness": {
+      "unit": "mm",
+      "description": "Average thickness across AD-signature cortical regions (entorhinal, temporal, parietal). Thinning tracks cumulative neuronal loss. Millimeters are calibrated to this project's coarse-resolution synthetic phantom, not literal clinical cortical thickness.",
+      "normal_range": [5.6, 6.0],
+      "display_range": [4.5, 7.0],
+      "sets": {
+        "low": [0.0, 0.0, 4.9, 5.2],
+        "borderline": [4.9, 5.2, 5.6, 5.85],
+        "normal": [5.6, 5.85, 10.0, 10.0]
+      }
+    }
+  },
+  "output_sets": {
+    "provisional": true,
+    "todo": "TODO(ml-team): these output sets are placeholders (triangles centred at 0, 0.5 and 1 on the 0-1 severity axis). Replace them with sets agreed with the neurologist before anyone interprets `severity`.",
+    "sets": {
+      "CN": [0.0, 0.0, 0.0, 0.5],
+      "MCI": [0.0, 0.5, 0.5, 1.0],
+      "AD": [0.5, 1.0, 1.0, 1.0]
+    }
+  }
+}

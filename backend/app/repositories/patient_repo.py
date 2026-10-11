@@ -180,12 +180,22 @@ async def cohort_stats(db: AsyncSession) -> dict:
             select(func.count()).select_from(FISResult).where(FISResult.needs_review.is_(True))
         )
     ).scalar_one()
-    avg_confidence = (await db.execute(select(func.avg(FISResult.confidence)))).scalar() or 0.0
+    # Averaged over staged results only: an indeterminate result has no
+    # confidence to average, and its stored 0 would drag the figure down.
+    avg_confidence = (
+        await db.execute(
+            select(func.avg(FISResult.confidence)).where(FISResult.determinate.is_(True))
+        )
+    ).scalar() or 0.0
 
     by_stage: dict[Stage, int] = dict.fromkeys(Stage, 0)
+    indeterminate = 0
     rows = await db.execute(select(FISResult.stage, func.count()).group_by(FISResult.stage))
     for stage, count in rows.all():
-        by_stage[stage] = count
+        if stage is None:
+            indeterminate += count
+        else:
+            by_stage[stage] = count
 
     return {
         "total_patients": total_patients,
@@ -193,4 +203,5 @@ async def cohort_stats(db: AsyncSession) -> dict:
         "needs_review": needs_review,
         "avg_confidence": round(float(avg_confidence), 1),
         "by_stage": by_stage,
+        "indeterminate": indeterminate,
     }

@@ -61,6 +61,9 @@ class ScanSummary(CamelModel):
     uncertainty: float | None = None
     needs_review: bool | None = None
     extraction_method: ExtractionMethod | None = None
+    determinate: bool | None = None
+    indeterminate_reason: str | None = None
+    severity: float | None = None
 
     @classmethod
     def from_scan(cls, scan: "Scan") -> "ScanSummary":
@@ -74,6 +77,9 @@ class ScanSummary(CamelModel):
             confidence=result.confidence if result else None,
             uncertainty=result.uncertainty if result else None,
             needs_review=result.needs_review if result else None,
+            determinate=result.determinate if result else None,
+            indeterminate_reason=result.indeterminate_reason if result else None,
+            severity=result.severity if result else None,
         )
 
 

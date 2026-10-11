@@ -8,7 +8,8 @@ class BiomarkerReadingRead(CamelModel):
     key: BiomarkerKey
     value: float
     unit: str
-    abnormality: float = Field(ge=0, le=1)
+    # null when the active calibration does not apply to this value.
+    abnormality: float | None = Field(default=None, ge=0, le=1)
 
 
 class FiredRuleRead(CamelModel):
@@ -19,13 +20,21 @@ class FiredRuleRead(CamelModel):
 
 
 class FISResultRead(CamelModel):
-    stage: Stage
+    # null when `determinate` is false: the engine declined to stage the case.
+    stage: Stage | None
     confidence: float = Field(ge=0, le=100)
     uncertainty: float = Field(ge=0, le=100)
     needs_review: bool
     reviewed: bool = False
     membership: dict[Stage, float]
     fired_rules: list[FiredRuleRead]
+    # --- Additive: the engine contract for real data ---
+    determinate: bool = True
+    indeterminate_reason: str | None = None
+    # 0-1 centroid of the aggregated output sets; provisional until the
+    # calibration's output sets are clinically agreed.
+    severity: float | None = Field(default=None, ge=0, le=1)
+    calibration_version: str = "unknown"
 
 
 class CurvePoint(CamelModel):

@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from app.api.deps import CurrentUser
 from app.core.config import get_settings
+from app.core.exceptions import CalibrationIncompleteError
 from app.models.enums import BiomarkerKey
 from app.schemas.fis import (
     BiomarkerDefRead,
@@ -11,7 +12,7 @@ from app.schemas.fis import (
     FISSimulateRequest,
     RuleDescriptionRead,
 )
-from app.services.biomarkers import BIOMARKER_DEFS
+from app.services.calibration import get_calibration
 from app.services.fis_engine import RULES, run_fis
 
 router = APIRouter(prefix="/fis", tags=["fis"])
@@ -19,6 +20,13 @@ router = APIRouter(prefix="/fis", tags=["fis"])
 
 @router.get("/biomarkers", response_model=list[BiomarkerDefRead])
 async def list_biomarker_defs(_current_user: CurrentUser) -> list[BiomarkerDefRead]:
+    """The biomarker definitions of the active calibration file."""
+    calibration = get_calibration()
+    if not calibration.complete:
+        raise CalibrationIncompleteError(
+            f"The active calibration ({calibration.version}) has unset values, so there are "
+            "no biomarker definitions to show. Set CALIBRATION_FILE to a complete file."
+        )
     return [
         BiomarkerDefRead(
             key=d.key,
@@ -33,7 +41,7 @@ async def list_biomarker_defs(_current_user: CurrentUser) -> list[BiomarkerDefRe
                 for label, points in d.sample_curve().items()
             },
         )
-        for d in BIOMARKER_DEFS.values()
+        for d in calibration.biomarkers.values()
     ]
 
 
@@ -68,6 +76,10 @@ async def simulate(payload: FISSimulateRequest, _current_user: CurrentUser) -> F
         confidence=output.confidence,
         uncertainty=output.uncertainty,
         needs_review=output.needs_review,
+        determinate=output.determinate,
+        indeterminate_reason=output.indeterminate_reason,
+        severity=output.severity,
+        calibration_version=output.calibration_version,
         membership=output.membership,
         fired_rules=[
             FiredRuleRead(

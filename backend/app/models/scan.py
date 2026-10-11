@@ -2,7 +2,7 @@ import uuid
 from datetime import date
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import JSON, Date, Enum, Float, ForeignKey, String
+from sqlalchemy import JSON, Boolean, Date, Enum, Float, ForeignKey, String, true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -65,7 +65,9 @@ class BiomarkerReading(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     key: Mapped[BiomarkerKey] = mapped_column(Enum(BiomarkerKey, native_enum=False, length=40))
     value: Mapped[float] = mapped_column(Float)
     unit: Mapped[str] = mapped_column(String(10))
-    abnormality: Mapped[float] = mapped_column(Float)
+    # None when the active calibration does not apply to this value (for
+    # example real data scored while only the phantom calibration exists).
+    abnormality: Mapped[float | None] = mapped_column(Float, nullable=True)
 
 
 class FISResult(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -76,7 +78,10 @@ class FISResult(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     scan: Mapped["Scan"] = relationship(back_populates="fis_result")
 
-    stage: Mapped[Stage] = mapped_column(Enum(Stage, native_enum=False, length=5))
+    # None when the result is indeterminate (see `determinate` below).
+    stage: Mapped[Stage | None] = mapped_column(
+        Enum(Stage, native_enum=False, length=5), nullable=True
+    )
     confidence: Mapped[float] = mapped_column(Float)
     uncertainty: Mapped[float] = mapped_column(Float)
     needs_review: Mapped[bool] = mapped_column(default=False)
@@ -85,6 +90,17 @@ class FISResult(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     membership: Mapped[dict[str, float]] = mapped_column(JSON)
     # [{"id": "R1", "antecedent": "...", "consequent": "AD", "firing_strength": 0.81}, ...]
     fired_rules: Mapped[list[dict]] = mapped_column(JSON)
+
+    # False when the engine declined to stage this case; `stage` is then
+    # None and `indeterminate_reason` says why (codes in fis_engine.py).
+    determinate: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
+    indeterminate_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # 0-1 centroid of the aggregated output sets. None when indeterminate or
+    # when the calibration has no output sets.
+    severity: Mapped[float | None] = mapped_column(Float, nullable=True)
+    calibration_version: Mapped[str] = mapped_column(
+        String(64), default="unknown", server_default="unknown"
+    )
 
     reviewed_by_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True

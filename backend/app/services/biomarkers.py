@@ -1,24 +1,24 @@
 """Biomarker definitions and fuzzification.
 
 Each biomarker is described by three overlapping fuzzy sets (trapezoidal
-membership functions) fitted to illustrative clinical breakpoints. This is
-the Phase 3/4 reference implementation referred to in the project's
-PHASES.md — the breakpoints below are a starting point designed to be
-replaced during the clinician-guided rule design step, not a validated
-diagnostic threshold.
+membership functions). This module holds the mechanics (`trapmf`,
+`BiomarkerDef`) and the structural half of each definition
+(`BIOMARKER_STRUCTURE`). It holds no numbers: every breakpoint,
+`normal_range`, `display_range`, unit and description is read from a
+versioned calibration file under `app/calibration/` by
+`app/services/calibration.py`.
 
-Hippocampal volume's breakpoints are in literature-plausible clinical mL.
-Ventricle-to-brain ratio and cortical thickness are instead calibrated to
-what `volumetry.py`'s pipeline actually measures on the synthetic MRI
-phantom (`synthetic_mri.py`) end-to-end: that phantom's voxel resolution
-(2mm isotropic) is too coarse to resolve a literal ~2.5mm cortical ribbon
-as a multi-voxel shell, and its ventricle-to-total-brain-mask proportions
-are geometrically smaller than a real head's, so literal clinical
-percentages/mm would put every synthetic case in the same fuzzy bucket
-regardless of severity. Recalibrating to the phantom's own achievable
-range keeps the demo's severity dial meaningful end-to-end; real
-breakpoints would come from Phase 1-4 clinical/literature calibration
-against real scans, not from this phantom.
+`phantom.v0.json` carries the values that used to be literals here. They
+are fitted to what `volumetry.py` measures on the synthetic phantom
+(`synthetic_mri.py`), whose 2 mm voxels cannot resolve a real ~2.5 mm
+cortical ribbon and whose ventricle proportions are smaller than a real
+head's. They are not clinical thresholds, which is why the engine refuses
+to stage real data with that file (see `fis_engine.py`).
+
+Open clinical assumptions that still apply to those numbers, tracked in
+docs/ARCHITECTURE.md: C3 (phantom-scale VBR and thickness breakpoints),
+C7 (the 0.5 borderline weight in `abnormality`), C8 (`normal_range`
+disagrees with the NORMAL set).
 """
 
 from collections.abc import Mapping
@@ -27,8 +27,14 @@ from enum import StrEnum
 
 from app.models.enums import BiomarkerKey
 
-# Version label of the fuzzy-set breakpoints below, recorded on every scan.
-CALIBRATION_VERSION = "phantom.v0"
+# Unit strings. A measurement carries the unit of the instrument that
+# produced it, a calibration file declares the unit its breakpoints are in,
+# and the engine refuses to combine the two unless they are equal.
+UNIT_ML = "mL"  # in-house phantom volumetry: raw hippocampal volume
+UNIT_PERCENT = "%"  # in-house phantom volumetry: ventricle-to-brain ratio
+UNIT_MM = "mm"
+UNIT_PERMILLE_ICV = "‰ICV"  # real data: volume / ICV x 1000
+UNIT_RATIO = "ratio"  # real data: unitless ventricle-to-brain ratio
 
 
 class FuzzyLabel(StrEnum):
@@ -109,80 +115,65 @@ class BiomarkerDef:
         return round(min(1.0, max(0.0, worst + 0.5 * borderline + 0.0 * normal)), 4)
 
 
-BIOMARKER_DEFS: dict[BiomarkerKey, BiomarkerDef] = {
-    BiomarkerKey.HIPPOCAMPAL_VOLUME: BiomarkerDef(
+@dataclass(frozen=True, slots=True)
+class BiomarkerStructure:
+    """The part of a biomarker definition that is code, not calibration:
+    its names, which direction is worse, and which fuzzy sets the rule
+    base in fis_engine.py refers to. Every number, the unit and the
+    clinician-facing description live in the calibration file instead.
+    """
+
+    key: BiomarkerKey
+    label: str
+    short_label: str
+    lower_is_worse: bool
+    set_labels: tuple[FuzzyLabel, ...]
+
+
+BIOMARKER_STRUCTURE: dict[BiomarkerKey, BiomarkerStructure] = {
+    BiomarkerKey.HIPPOCAMPAL_VOLUME: BiomarkerStructure(
         key=BiomarkerKey.HIPPOCAMPAL_VOLUME,
         label="Hippocampal Volume",
         short_label="Hippocampus",
-        unit="mL",
-        # TODO(clinical: C8) -- disagrees with the NORMAL set below, which
-        # plateaus 3.6-6.0. A 5.0 mL reading renders as outside normal on
-        # screen while the engine treats it as fully normal.
-        normal_range=(3.0, 4.5),
         lower_is_worse=True,
-        description=(
-            # TODO(clinical: C2) -- this says ICV-normalized. Nothing in
-            # this repository computes ICV; volumetry.py returns a raw mL
-            # volume. The value is mislabelled, not merely uncorrected.
-            "Bilateral hippocampal volume, normalized for intracranial volume. Atrophy here is "
-            "one of the earliest structural markers of AD-related neurodegeneration."
-        ),
-        sets={
-            FuzzyLabel.LOW: (0.0, 0.0, 2.0, 2.6),
-            FuzzyLabel.BORDERLINE: (2.2, 2.6, 3.0, 3.4),
-            FuzzyLabel.NORMAL: (3.0, 3.6, 6.0, 6.0),
-        },
-        display_range=(0.0, 6.5),
+        set_labels=(FuzzyLabel.LOW, FuzzyLabel.BORDERLINE, FuzzyLabel.NORMAL),
     ),
-    # TODO(clinical: C3) -- the VBR and cortical-thickness breakpoints
-    # below are calibrated to what the 2mm phantom can resolve, not to
-    # clinical scales: "normal" cortex reads 5.6-6.0 mm against a real
-    # AD-signature thickness of roughly 2.5 mm. The unit strings sent to
-    # the UI are still clinical, so a neurologist reading this screen
-    # would reasonably conclude the instrument is broken.
-    BiomarkerKey.VENTRICLE_BRAIN_RATIO: BiomarkerDef(
+    BiomarkerKey.VENTRICLE_BRAIN_RATIO: BiomarkerStructure(
         key=BiomarkerKey.VENTRICLE_BRAIN_RATIO,
         label="Ventricle-to-Brain Ratio",
         short_label="VBR",
-        unit="%",
-        normal_range=(0.0, 0.5),
         lower_is_worse=False,
-        description=(
-            "Lateral ventricle volume as a percentage of total brain volume. Enlargement is a "
-            "proxy for global tissue loss (ex-vacuo dilation). Percentages are calibrated to this "
-            "project's synthetic phantom, not literal clinical VBR — see module docstring."
-        ),
-        sets={
-            FuzzyLabel.NORMAL: (0.0, 0.0, 0.3, 0.5),
-            FuzzyLabel.BORDERLINE: (0.35, 0.5, 0.75, 0.95),
-            FuzzyLabel.HIGH: (0.75, 0.95, 3.0, 3.0),
-        },
-        display_range=(0.0, 1.6),
+        set_labels=(FuzzyLabel.NORMAL, FuzzyLabel.BORDERLINE, FuzzyLabel.HIGH),
     ),
-    BiomarkerKey.CORTICAL_THICKNESS: BiomarkerDef(
+    BiomarkerKey.CORTICAL_THICKNESS: BiomarkerStructure(
         key=BiomarkerKey.CORTICAL_THICKNESS,
         label="Mean Cortical Thickness",
         short_label="Cortex",
-        unit="mm",
-        normal_range=(5.6, 6.0),
         lower_is_worse=True,
-        description=(
-            "Average thickness across AD-signature cortical regions (entorhinal, temporal, "
-            "parietal). Thinning tracks cumulative neuronal loss. Millimeters are calibrated to "
-            "this project's coarse-resolution synthetic phantom, not literal clinical cortical "
-            "thickness — see module docstring."
-        ),
-        sets={
-            FuzzyLabel.LOW: (0.0, 0.0, 4.9, 5.2),
-            FuzzyLabel.BORDERLINE: (4.9, 5.2, 5.6, 5.85),
-            FuzzyLabel.NORMAL: (5.6, 5.85, 10.0, 10.0),
-        },
-        display_range=(4.5, 7.0),
+        set_labels=(FuzzyLabel.LOW, FuzzyLabel.BORDERLINE, FuzzyLabel.NORMAL),
     ),
 }
+
+
+def __getattr__(name: str) -> dict[BiomarkerKey, BiomarkerDef]:
+    """`BIOMARKER_DEFS` used to be a literal in this module. It is now the
+    biomarker definitions of the active calibration file, resolved on
+    access so existing `from app.services.biomarkers import BIOMARKER_DEFS`
+    imports keep working. New code should call
+    `app.services.calibration.get_calibration()` and say which calibration
+    it means.
+    """
+    if name == "BIOMARKER_DEFS":
+        from app.services.calibration import get_calibration
+
+        return get_calibration().biomarkers
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def fuzzify_all(
     values: Mapping[BiomarkerKey, float],
 ) -> dict[BiomarkerKey, dict[FuzzyLabel, float]]:
-    return {key: BIOMARKER_DEFS[key].fuzzify(value) for key, value in values.items()}
+    from app.services.calibration import get_calibration
+
+    defs = get_calibration().biomarkers
+    return {key: defs[key].fuzzify(value) for key, value in values.items()}

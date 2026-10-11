@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "version": "real.template",
+  "domain": "real",
+  "provisional": true,
+  "notes": "TODO(ml-team): template for a calibration fitted to real data. Copy it to a new file (for example real.v1.json), give it a new `version`, replace every null with a number, and point CALIBRATION_FILE at the copy. While any number below is null the engine treats the file as incomplete and returns an indeterminate result for every scan. Each fuzzy set is a trapezoid [a, b, c, d] with a <= b <= c <= d: zero below a, one between b and c, zero above d. The `unit` strings are the units the derivation code produces and the engine compares against, so change them only together with app/services/biomarker_derivation.py.",
+  "biomarkers": {
+    "hippocampal_volume": {
+      "unit": "‰ICV",
+      "description": "Bilateral hippocampal volume divided by intracranial volume, in per-mille of ICV. Atrophy here is one of the earliest structural markers of AD-related neurodegeneration.",
+      "todo": "TODO(ml-team): breakpoints, normal_range and display_range in per-mille of ICV.",
+      "normal_range": [null, null],
+      "display_range": [null, null],
+      "sets": {
+        "low": [null, null, null, null],
+        "borderline": [null, null, null, null],
+        "normal": [null, null, null, null]
+      }
+    },
+    "ventricle_brain_ratio": {
+      "unit": "ratio",
+      "description": "Lateral plus inferior lateral ventricle volume divided by brain segmentation volume, as a unitless ratio. Enlargement is a proxy for global tissue loss (ex-vacuo dilation).",
+      "todo": "TODO(ml-team): breakpoints, normal_range and display_range as a ratio (0.04, not 4).",
+      "normal_range": [null, null],
+      "display_range": [null, null],
+      "sets": {
+        "normal": [null, null, null, null],
+        "borderline": [null, null, null, null],
+        "high": [null, null, null, null]
+      }
+    },
+    "cortical_thickness": {
+      "unit": "mm",
+      "description": "Mean FreeSurfer cortical thickness over the configured AD-signature regions, both hemispheres, in millimetres. Thinning tracks cumulative neuronal loss.",
+      "todo": "TODO(ml-team): breakpoints, normal_range and display_range in mm.",
+      "normal_range": [null, null],
+      "display_range": [null, null],
+      "sets": {
+        "low": [null, null, null, null],
+        "borderline": [null, null, null, null],
+        "normal": [null, null, null, null]
+      }
+    }
+  },
+  "output_sets": {
+    "provisional": true,
+    "todo": "TODO(ml-team): output sets for CN, MCI and AD on the 0-1 severity axis, agreed with the neurologist. Leave them null to report a stage without a severity.",
+    "sets": {
+      "CN": [null, null, null, null],
+      "MCI": [null, null, null, null],
+      "AD": [null, null, null, null]
+    }
+  }
+}

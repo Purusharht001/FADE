@@ -49,6 +49,7 @@ from scipy import ndimage
 
 from app.core.exceptions import UnprocessableScanError
 from app.models.enums import BiomarkerKey
+from app.services.biomarkers import UNIT_ML, UNIT_MM, UNIT_PERCENT
 from app.services.preprocessing import PreprocessedVolume
 from app.services.synthetic_mri import VOLUME_SHAPE
 
@@ -63,6 +64,14 @@ _CSF_REF = 0.05
 _HIPPOCAMPUS_REF = 0.40
 _PARENCHYMA_REF = 0.58
 _CORTEX_REF = 0.78
+
+# The units this instrument reports in. Hippocampal volume is a raw mL
+# volume: nothing here computes ICV, so it is not ICV-normalised (C2).
+INHOUSE_UNITS: dict[BiomarkerKey, str] = {
+    BiomarkerKey.HIPPOCAMPAL_VOLUME: UNIT_ML,
+    BiomarkerKey.VENTRICLE_BRAIN_RATIO: UNIT_PERCENT,
+    BiomarkerKey.CORTICAL_THICKNESS: UNIT_MM,
+}
 
 _CSF_THRESHOLD = (_CSF_REF + _HIPPOCAMPUS_REF) / 2
 _CORTEX_THRESHOLD = (_PARENCHYMA_REF + _CORTEX_REF) / 2

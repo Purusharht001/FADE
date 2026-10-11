@@ -21,6 +21,7 @@ from app.core.security import InvalidTokenError
 from app.db.base import Base
 from app.db.session import dispose_engine, get_engine
 from app.middleware.logging import RequestLoggingMiddleware
+from app.services.calibration import get_calibration
 
 configure_logging()
 logger = get_logger(__name__)
@@ -31,6 +32,20 @@ limiter = Limiter(key_func=get_remote_address)
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
+
+    # Fail fast on a malformed calibration file rather than on the first
+    # scan; an incomplete (null) one is allowed and logged.
+    calibration = get_calibration()
+    log_calibration = logger.info if calibration.complete else logger.warning
+    log_calibration(
+        "calibration_loaded",
+        version=calibration.version,
+        domain=calibration.domain.value,
+        complete=calibration.complete,
+        provisional=calibration.provisional,
+        unset_values=len(calibration.missing),
+    )
+
     if settings.is_sqlite:
         # Zero-config local/dev/demo path: create tables directly. Postgres
         # deployments should run `alembic upgrade head` instead (see

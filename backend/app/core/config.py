@@ -49,6 +49,14 @@ class Settings(BaseSettings):
     # a 0-100 scale, compared with >=. Provisional pending calibration.
     uncertainty_review_threshold: float = 45.0
 
+    # --- Calibration ---
+    # The file holding every fuzzy-set breakpoint, unit and output set (see
+    # app/services/calibration.py). A bare name is looked up in
+    # app/calibration/; a path is used as given. The default is fitted to the
+    # synthetic phantom, so real data stays indeterminate until a calibration
+    # with "domain": "real" is supplied here.
+    calibration_file: str = "phantom.v0.json"
+
     # --- File uploads ---
     max_upload_mb: int = 64
     upload_dir: str = "./data/uploads"

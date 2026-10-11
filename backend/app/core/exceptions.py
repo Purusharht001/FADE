@@ -52,6 +52,16 @@ class UnprocessableScanError(AppError):
     code = "unprocessable_scan"
 
 
+class CalibrationIncompleteError(AppError):
+    """The active calibration file still has unset (null) values, so the
+    request needs numbers that do not exist yet. A configuration state,
+    not a client mistake.
+    """
+
+    status_code = status.HTTP_409_CONFLICT
+    code = "calibration_incomplete"
+
+
 def _error_response(status_code: int, code: str, message: str) -> JSONResponse:
     return JSONResponse(
         status_code=status_code, content={"error": {"code": code, "message": message}}
