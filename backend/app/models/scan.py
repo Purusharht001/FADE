@@ -1,12 +1,12 @@
 import uuid
 from datetime import date
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import JSON, Date, Enum, Float, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
-from app.models.enums import BiomarkerKey, ScanStatus, Stage
+from app.models.enums import BiomarkerKey, ExtractionMethod, ScanStatus, Stage
 
 if TYPE_CHECKING:
     from app.models.patient import Patient
@@ -27,6 +27,24 @@ class Scan(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Enum(ScanStatus, native_enum=False, length=30), default=ScanStatus.PENDING
     )
     failure_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    # --- Provenance (all nullable: rows that predate these columns stay valid) ---
+    extraction_method: Mapped[ExtractionMethod | None] = mapped_column(
+        Enum(ExtractionMethod, native_enum=False, length=30), nullable=True
+    )
+    # A research identifier such as "OAS1_0001_MR1". Never a name, an MRN or
+    # anything else that identifies a person; the API validates its shape.
+    external_subject_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    # Raw mm3 volumes and mm thicknesses exactly as parsed, before derivation.
+    raw_volumes: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    # [{"code": "...", "kind": "plausibility" | "info", "message": "...", ...}, ...]
+    qc_flags: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON, nullable=True)
+    calibration_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    engine_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
+    # Research-only ground truth (CDR at this visit). Deliberately absent from
+    # every schema in app/schemas/scan.py: only the research export may read it.
+    reference_label: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     biomarkers: Mapped[list["BiomarkerReading"]] = relationship(
         back_populates="scan", cascade="all, delete-orphan"

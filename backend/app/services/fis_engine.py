@@ -33,6 +33,11 @@ from app.services.biomarkers import BIOMARKER_DEFS, FuzzyLabel
 
 FuzzySnapshot = Mapping[BiomarkerKey, Mapping[FuzzyLabel, float]]
 
+# Recorded on every scan so a stored result can be traced to the inference
+# code that produced it. Bump when the engine's output can change for the
+# same inputs and calibration.
+ENGINE_VERSION = "1.0.0"
+
 
 def fAND(*degrees: float) -> float:
     return min(degrees) if degrees else 0.0

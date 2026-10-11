@@ -27,6 +27,9 @@ from enum import StrEnum
 
 from app.models.enums import BiomarkerKey
 
+# Version label of the fuzzy-set breakpoints below, recorded on every scan.
+CALIBRATION_VERSION = "phantom.v0"
+
 
 class FuzzyLabel(StrEnum):
     LOW = "low"  # atrophied / thinned, depending on the biomarker

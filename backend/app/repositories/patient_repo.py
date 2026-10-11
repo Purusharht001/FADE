@@ -1,11 +1,11 @@
 import datetime
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.enums import DataSource, Sex, Stage
+from app.models.enums import DataSource, ExtractionMethod, Sex, Stage
 from app.models.patient import Patient
 from app.models.scan import BiomarkerReading, FISResult, Scan
 
@@ -80,18 +80,74 @@ async def create_scan(
     scan_date: datetime.date,
     file_path: str | None,
     modality: str = "T1w",
+    extraction_method: ExtractionMethod | None = None,
+    external_subject_id: str | None = None,
+    reference_label: float | None = None,
 ) -> Scan:
     scan = Scan(
         patient_id=patient_id,
         scan_date=scan_date,
         file_path=file_path,
         modality=modality,
+        # Every nullable column is set explicitly, for the same reason the
+        # relationships below are: an attribute left unset is unloaded after
+        # the flush, and reading it to serialize the response would trigger
+        # a lazy load, which raises MissingGreenlet under asyncio.
+        failure_reason=None,
+        extraction_method=extraction_method,
+        external_subject_id=external_subject_id,
+        raw_volumes=None,
+        qc_flags=None,
+        calibration_version=None,
+        engine_version=None,
+        reference_label=reference_label,
         biomarkers=[],  # explicitly "loaded empty"/"loaded None" — see
         fis_result=None,  # patient_repo.create()'s comment for why this matters.
     )
     db.add(scan)
     await db.flush()
     return scan
+
+
+async def get_patient_only(db: AsyncSession, patient_id: uuid.UUID) -> Patient | None:
+    """The patient row alone, without its scan history."""
+    return await db.get(Patient, patient_id)
+
+
+async def count_non_phantom_scans(
+    db: AsyncSession, patient_id: uuid.UUID, *, exclude_scan_id: uuid.UUID | None = None
+) -> int:
+    """How many of a patient's scans did not come from the synthetic phantom.
+
+    A scan with no recorded extraction method counts as non-phantom: it is a
+    stored file waiting for volumetry, and only real data takes that path.
+    """
+    stmt = (
+        select(func.count())
+        .select_from(Scan)
+        .where(
+            Scan.patient_id == patient_id,
+            or_(
+                Scan.extraction_method.is_(None),
+                Scan.extraction_method != ExtractionMethod.INHOUSE_PHANTOM,
+            ),
+        )
+    )
+    if exclude_scan_id is not None:
+        stmt = stmt.where(Scan.id != exclude_scan_id)
+    return int((await db.execute(stmt)).scalar_one())
+
+
+async def count_phantom_scans(db: AsyncSession, patient_id: uuid.UUID) -> int:
+    stmt = (
+        select(func.count())
+        .select_from(Scan)
+        .where(
+            Scan.patient_id == patient_id,
+            Scan.extraction_method == ExtractionMethod.INHOUSE_PHANTOM,
+        )
+    )
+    return int((await db.execute(stmt)).scalar_one())
 
 
 async def replace_biomarkers(

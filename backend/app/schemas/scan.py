@@ -1,10 +1,10 @@
 import datetime
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
-from app.models.enums import ScanStatus, Stage
+from app.models.enums import ExtractionMethod, ScanStatus, Stage
 from app.schemas.base import CamelModel
 from app.schemas.fis import BiomarkerReadingRead, FISResultRead
 
@@ -33,6 +33,19 @@ class ScanRead(CamelModel):
     failure_reason: str | None
     biomarkers: list[BiomarkerReadingRead]
     fis_result: FISResultRead | None
+    # --- Provenance (additive). The research-only reference label is
+    # intentionally not a field here; see app/models/scan.py. ---
+    extraction_method: ExtractionMethod | None = None
+    external_subject_id: str | None = None
+    raw_volumes: dict[str, Any] | None = None
+    qc_flags: list[dict[str, Any]] = Field(default_factory=list)
+    calibration_version: str | None = None
+    engine_version: str | None = None
+
+    @field_validator("qc_flags", mode="before")
+    @classmethod
+    def _none_is_no_flags(cls, value: Any) -> Any:
+        return [] if value is None else value
 
 
 class ScanSummary(CamelModel):
@@ -47,6 +60,7 @@ class ScanSummary(CamelModel):
     confidence: float | None = None
     uncertainty: float | None = None
     needs_review: bool | None = None
+    extraction_method: ExtractionMethod | None = None
 
     @classmethod
     def from_scan(cls, scan: "Scan") -> "ScanSummary":
@@ -55,6 +69,7 @@ class ScanSummary(CamelModel):
             id=scan.id,
             scan_date=scan.scan_date,
             status=scan.status,
+            extraction_method=scan.extraction_method,
             stage=result.stage if result else None,
             confidence=result.confidence if result else None,
             uncertainty=result.uncertainty if result else None,

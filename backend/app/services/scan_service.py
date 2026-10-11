@@ -12,10 +12,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.core.exceptions import UnprocessableScanError
 from app.core.logging import get_logger
-from app.models.enums import ScanStatus
+from app.models.enums import DataSource, ExtractionMethod, ScanStatus
 from app.models.scan import BiomarkerReading, FISResult, Scan
 from app.repositories import patient_repo
-from app.services.biomarkers import BIOMARKER_DEFS
+from app.services.biomarkers import BIOMARKER_DEFS, CALIBRATION_VERSION
+from app.services.fis_engine import ENGINE_VERSION
 from app.services.pipeline import PipelineResult, run_pipeline_from_file, run_pipeline_synthetic
 
 logger = get_logger(__name__)
@@ -54,12 +55,43 @@ async def _persist_result(db: AsyncSession, scan: Scan, result: PipelineResult) 
 
     scan.status = ScanStatus.COMPLETED
     scan.failure_reason = None
+    scan.calibration_version = CALIBRATION_VERSION
+    scan.engine_version = ENGINE_VERSION
     await db.flush()
     await db.refresh(scan, attribute_names=["biomarkers", "fis_result"])
     return scan
 
 
+async def ensure_phantom_patient(db: AsyncSession, scan: Scan) -> None:
+    """Keeps the provenance invariant: a patient holding synthetic phantom
+    data is labelled PHANTOM, and phantom data is never mixed into a
+    patient that holds real measurements (C1).
+
+    A patient created with another source and then given a synthetic scan
+    is relabelled rather than rejected, so the demo flow keeps working. It
+    is rejected only if the patient already has a non-phantom scan, where
+    relabelling would misdescribe real data instead.
+    """
+    patient = await patient_repo.get_patient_only(db, scan.patient_id)
+    if patient is None or patient.source == DataSource.PHANTOM:
+        return
+    real_scans = await patient_repo.count_non_phantom_scans(db, patient.id, exclude_scan_id=scan.id)
+    if real_scans:
+        raise UnprocessableScanError(
+            "This patient already has real scan data; a synthetic phantom scan cannot be "
+            "added to it. Create a separate patient with source PHANTOM for demo scans."
+        )
+    logger.info(
+        "patient_relabelled_phantom",
+        patient_id=str(patient.id),
+        previous_source=patient.source.value,
+    )
+    patient.source = DataSource.PHANTOM
+    await db.flush()
+
+
 async def process_uploaded_scan(db: AsyncSession, scan: Scan, file_path: str) -> Scan:
+    scan.extraction_method = ExtractionMethod.INHOUSE_PHANTOM
     scan.status = ScanStatus.PREPROCESSING
     await db.flush()
     try:
@@ -78,6 +110,8 @@ async def process_synthetic_scan(
     db: AsyncSession, scan: Scan, severity: float, *, seed: int | None
 ) -> Scan:
     settings = get_settings()
+    scan.extraction_method = ExtractionMethod.INHOUSE_PHANTOM
+    await ensure_phantom_patient(db, scan)
     scan.status = ScanStatus.PREPROCESSING
     await db.flush()
 
