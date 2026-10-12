@@ -276,3 +276,4 @@ What must be done to a scan before it leaves the clinic, and what the backend do
 check on arrival, is set out in section C of
 [`docs/REAL_DATA_RUNBOOK.md`](docs/REAL_DATA_RUNBOOK.md). Test fixtures in this repository are
 hand-written with invented numbers; no real subject's data is committed.
+
