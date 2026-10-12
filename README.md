@@ -94,14 +94,20 @@ plan around his availability, not just team bandwidth.
 ## 7. Tech Stack
 
 - **Backend:** built - see [`backend/`](backend/) (FastAPI + async SQLAlchemy 2.0 + Pydantic v2,
-  JWT auth, Alembic migrations, SQLite for local dev / Postgres in Docker). Implements the actual
-  Phase 2–6 pipeline: `nibabel`/`numpy`/`scipy`/`scikit-image` for preprocessing and volumetry, and a
-  hand-built multi-antecedent **Mamdani fuzzy inference engine** (not `scikit-fuzzy` - see
-  [`backend/README.md`](backend/README.md) for why) with 10 explicit clinical rules over three
-  independently-fuzzified biomarkers. Runs end-to-end today against a synthetic MRI phantom
-  (`backend/app/services/synthetic_mri.py`) in place of the real OASIS/ADNI/clinic data Phase 1
-  hasn't unblocked yet - every other stage of the pipeline (preprocessing, segmentation, biomarker
-  extraction, fuzzy inference) is real, not mocked.
+  JWT auth, Alembic migrations, SQLite for local dev / Postgres in Docker). A hand-built fuzzy
+  inference engine (not `scikit-fuzzy` - see [`backend/README.md`](backend/README.md) for why) with
+  10 explicit rules over three independently-fuzzified biomarkers, and Mamdani centroid
+  defuzzification for a 0-1 severity score. It handles two kinds of data and keeps them apart:
+  - *Synthetic phantom data* (`backend/app/services/synthetic_mri.py`), measured by an in-house
+    `nibabel`/`numpy`/`scipy`/`scikit-image` preprocessing and volumetry pipeline. The demo runs on
+    this. Phantom cases are labelled `PHANTOM` everywhere.
+  - *Real data*, measured by FreeSurfer or FastSurfer and read from their stats files: the OASIS-1
+    cohort (import CLI) and anonymised clinic scans (NIfTI or DICOM upload, with a
+    de-identification gate). **Real data is ingested, quality-checked and stored, but not yet
+    staged:** every fuzzy-set breakpoint lives in a calibration file, the only one that exists was
+    fitted to the phantom, and the engine returns an explicit "indeterminate" for real data until
+    a real calibration file is supplied. See
+    [`docs/REAL_DATA_RUNBOOK.md`](docs/REAL_DATA_RUNBOOK.md).
 - **Decision-support UI:** built and wired to the live API - see [`frontend/`](frontend/) (Vite +
   React 19 + TypeScript + Tailwind CSS v4 + Radix/shadcn-style components + Recharts + Framer Motion +
   TanStack Query). Talks to `backend/` over a camelCase JSON REST contract with JWT auth; the frontend
@@ -118,9 +124,10 @@ pjt1/
 ├── frontend/               # ✅ built - decision-support dashboard, wired to the live API, see frontend/README.md
 ├── .github/workflows/      # CI - lint/typecheck/test on every PR, see ci.yml
 ├── docker-compose.yml      # full stack: Postgres + FastAPI + React (nginx) - see §12 below
-├── docs/                   # architecture, baseline gate, OASIS-1 benchmark results
-│   ├── ARCHITECTURE.md
-│   ├── BENCHMARK_OASIS1.md # ✅ OASIS-1 empirical benchmark & Mamdani fuzzy triage validation
+├── docs/                   # architecture, real-data runbook, baseline gate, OASIS-1 benchmark
+│   ├── ARCHITECTURE.md       # file reference + register of unsourced clinical assumptions (C1-C10)
+│   ├── REAL_DATA_RUNBOOK.md  # importing OASIS, processing clinic scans, anonymisation, calibration
+│   ├── BENCHMARK_OASIS1.md   # ✅ OASIS-1 empirical benchmark & Mamdani fuzzy triage validation
 │   └── PHASE0_GATE.md
 ├── PHASES.md
 └── README.md
@@ -140,13 +147,13 @@ dependencies, and risks per phase).
 |---|---|---|
 | 0 | Foundation & Literature Review | Done - 7 papers reviewed, gap identified |
 | 1 | Requirements, Ethics & Data Access | IRB/consent, dataset applications - **still open, blocks Phase 7** |
-| 2 | Data Acquisition & Preprocessing | **Built** in [`backend/`](backend/) - runs on a synthetic MRI phantom pending Phase 1 |
-| 3 | Volumetric Feature Extraction | **Built** - hippocampal volume, VBR, cortical thickness, real segmentation code |
-| 4 | Fuzzy Inference System Design | **Built** - 10-rule Mamdani engine; rules are illustrative, not yet clinician-reviewed |
-| 5 | System Integration | **Built** - MRI in → stage + confidence out, exercised via a live REST API |
+| 2 | Data Acquisition & Preprocessing | **Ingestion built** in [`backend/`](backend/) - OASIS import CLI and anonymised clinic uploads are ready; no real data has been loaded yet. In-house preprocessing remains phantom-only |
+| 3 | Volumetric Feature Extraction | **Built for both routes** - phantom: in-house segmentation; real data: FreeSurfer/FastSurfer stats parsed and normalised by ICV. FADE does not segment real scans itself |
+| 4 | Fuzzy Inference System Design | **Engine built** - 10 rules, centroid defuzzification, explicit "indeterminate" results, calibration loaded from a file. **No real calibration exists yet**; rules and breakpoints are illustrative, not clinician-reviewed |
+| 5 | System Integration | **Built** - phantom: MRI in → stage out; real data: stats or scan in → biomarkers and QC out, staged once a real calibration is installed |
 | 6 | Benchmark Validation | **Interim Completed** on OASIS-1 ($N = 235$) — baseline models + fuzzy triage validation (see [`docs/BENCHMARK_OASIS1.md`](docs/BENCHMARK_OASIS1.md)) |
-| 7 | Real-World Clinical Validation | Blocked on Phase 1 (clinic consent/ethics) |
-| 8 | Decision-Support Interface | **Built and wired to `backend/`** - real patient/scan data, real-time processing states (no login gate yet — see backend README's security notes) |
+| 7 | Real-World Clinical Validation | **Tooling built, study not run** - blind clinician-rating endpoints and a research export exist; still blocked on Phase 1 (clinic consent/ethics) and on a real calibration |
+| 8 | Decision-Support Interface | **Built for the phantom demo** - not yet updated for real data: no login screen (the API now requires one outside demo mode), and it does not yet show indeterminate results or the new scan states |
 | 9 | Evaluation & Iteration | Refine rules against clinical feedback |
 | 10 | Documentation & Presentation | Final report, demo, paper writeup |
 
@@ -168,9 +175,15 @@ Preliminary empirical validation was conducted on the **OASIS-1** cross-sectiona
   - Confirmed that conventional hard-label classifiers suffer their highest error rate on the borderline MCI group, whereas FADE's fuzzy inference engine natively surfaces this diagnostic uncertainty to triage cases for clinical review.
   - For full execution details, metrics, and figure specifications, see [`docs/BENCHMARK_OASIS1.md`](docs/BENCHMARK_OASIS1.md).
 
-**Immediate next step, unblocked today:** the clinician-review conversation Phase 4 has always needed
-(§5) - the rule base and biomarker breakpoints are implemented and demoable end-to-end, but still
-literature-informed guesses rather than something Dr. Deshmukh has looked at.
+**Immediate next steps:**
+
+1. *ML:* confirm the VBR formula against OAS1_0001_MR1, import the OASIS-1 cohort, and produce the
+   first real calibration file. Until that file exists no real case gets a stage. The procedure is
+   in [`docs/REAL_DATA_RUNBOOK.md`](docs/REAL_DATA_RUNBOOK.md).
+2. *Frontend:* a login screen, and handling for indeterminate results and the new scan states.
+3. *Clinical:* the review conversation Phase 4 has always needed (§5). The rule base and the
+   breakpoints are still literature-informed guesses rather than something Dr. Deshmukh has looked
+   at; the open items are listed as C1-C10 in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## 10. Success Metrics
 
@@ -207,6 +220,15 @@ Brings up Postgres, the API (migrations applied automatically on container start
 `http://localhost:8000`. Each half also has its own standalone `Dockerfile` and its own README with
 local (non-Docker) setup instructions: [`backend/README.md`](backend/README.md),
 [`frontend/README.md`](frontend/README.md).
+
+**Authentication.** The compose file runs the API in production mode, which requires a login token
+on every request. The dashboard has no login screen yet, so with the default `.env` it will show
+authorisation errors. For a demo on synthetic data, set `ENVIRONMENT=development` in `.env`: the API
+then runs in demo mode, where every visitor acts as one shared demo clinician. Never load real
+patient data in demo mode.
+
+**Real data** (the OASIS cohort, clinic scans) is handled through the API and command-line tools
+described in [`docs/REAL_DATA_RUNBOOK.md`](docs/REAL_DATA_RUNBOOK.md), run locally from `backend/`.
 
 ## 13. Continuous Integration
 
@@ -249,3 +271,8 @@ This project involves real, identifiable patient MRI data prior to anonymization
 patient data, DICOM headers, or clinic records to this repository at any point - `data/` should stay
 gitignored, and only de-identified, consented, processed data should ever leave the clinical
 environment.
+
+What must be done to a scan before it leaves the clinic, and what the backend does and does not
+check on arrival, is set out in section C of
+[`docs/REAL_DATA_RUNBOOK.md`](docs/REAL_DATA_RUNBOOK.md). Test fixtures in this repository are
+hand-written with invented numbers; no real subject's data is committed.

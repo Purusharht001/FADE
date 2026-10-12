@@ -1,13 +1,21 @@
 # FADE — Architecture
 
-Generated during Phase 0 (audit and baseline). The import graph in the
+Generated during Phase 0 (audit and baseline) and updated by the real-data
+readiness work (branch `feat/real-data-readiness`). The import graph in the
 backend table below is machine-derived from the AST, not hand-written, so it
-stays accurate; regenerate it with `backend/_gen_table.py`.
+stays accurate; regenerate it with `backend/scripts/gen_architecture_table.py`.
 
 FADE is a structural T1 MRI decision-support tool. The pipeline is
-MRI → preprocessing → volumetry → three biomarkers → fuzzy inference →
-CN/MCI/AD stage plus a confidence score. It is a triage aid, not an
-autonomous diagnostic system.
+MRI → volumetry → three biomarkers → fuzzy inference → CN/MCI/AD stage plus
+a confidence score, or an explicit "indeterminate" when the engine has no
+basis for a stage. It is a triage aid, not an autonomous diagnostic system.
+
+Biomarkers reach the engine by one of two routes. Phantom data is measured
+in-house (`preprocessing` → `volumetry`). Real data is measured by
+FreeSurfer or FastSurfer and arrives as stats files or numbers
+(`freesurfer_stats` → `biomarker_derivation`). Both routes meet in
+`pipeline.evaluate_biomarkers`, where the calibration file is applied. See
+[`REAL_DATA_RUNBOOK.md`](REAL_DATA_RUNBOOK.md) for operating it.
 
 ---
 
@@ -27,6 +35,21 @@ Measured on a clean install at commit `cf706f9`, Python 3.12.7, uv 0.11.25.
 The suite was green before any Phase 0 change and green after. Phase 0
 changed only dependency pins, ruff exclusions, `.env.example`, docs, and
 non-executable `TODO(clinical)` comments.
+
+### State after the real-data readiness work
+
+Measured on branch `feat/real-data-readiness`, same machine. The baseline
+table above is kept as recorded.
+
+| Check | Command | Result |
+|---|---|---|
+| Backend tests | `uv run pytest -q` | **782 passed, 1 skipped** (the skipped test needs a real OAS1_0001_MR1 stats file, which is not committed) |
+| Type check (py) | `uv run mypy app` | **clean**, 62 source files |
+| Lint | `uv run ruff check app tests scripts` | **clean** |
+| Migrations | `alembic upgrade head` on empty SQLite | **succeeds**, four revisions, head `ef8721d5b1d9` |
+| Migrations on PostgreSQL | CI job | not run locally; the generated SQL was inspected |
+
+The frontend was not changed and its checks were not re-run.
 
 ### Ruff exclusion
 
@@ -83,18 +106,20 @@ re-verified afterwards.
 ```
 .
 ├── backend/
-│   ├── alembic/            migrations (one revision)
+│   ├── alembic/            migrations (four revisions)
 │   ├── app/
 │   │   ├── api/v1/         HTTP routes
-│   │   ├── core/           config, security, logging, exceptions
-│   │   ├── db/             engine, base, seed
+│   │   ├── calibration/    versioned calibration JSON (phantom.v0, real.template)
+│   │   ├── cli/            command-line tools (import_cohort, rescore, create_user)
+│   │   ├── core/           config, security, logging, exceptions, rate limit, startup checks
+│   │   ├── db/             engine, base, seed, startup schema check
 │   │   ├── middleware/     request logging
 │   │   ├── models/         SQLAlchemy entities + enums
 │   │   ├── repositories/   persistence queries
 │   │   ├── schemas/        Pydantic camelCase contract
-│   │   └── services/       preprocessing, volumetry, biomarkers, FIS, pipeline
-│   ├── scripts/            seed, smoke test, kill_port
-│   └── tests/              9 modules, 100 tests
+│   │   └── services/       ingestion, derivation, calibration, FIS, pipeline, study, audit
+│   ├── scripts/            thin entry points for the CLI tools, seed, smoke test
+│   └── tests/              25 modules, 782 tests, hand-written fixtures under fixtures/
 ├── frontend/src/
 │   ├── api/                typed fetch client + TanStack Query hooks
 │   ├── components/         dashboard, patient, layout, ui primitives
@@ -102,7 +127,7 @@ re-verified afterwards.
 │   ├── pages/              dashboard, patient-detail
 │   ├── store/              zustand (theme, toast)
 │   └── types/              generated-by-hand API types
-└── docs/                   this file
+└── docs/                   this file, the real-data runbook, the OASIS-1 benchmark
 ```
 
 ## 4. Layering
@@ -129,44 +154,68 @@ Regenerate with `uv run python scripts/gen_architecture_table.py` from `backend/
 <!-- BEGIN GENERATED: backend-file-reference -->
 | File | Responsibility | Imports (internal) | Imported by |
 |---|---|---|---|
-| `app/__init__.py` | Package marker. No logic. | - | `api.deps`, `api.v1.auth`, `api.v1.cohort`, `api.v1.patients`, `api.v1.router`, `api.v1.scans`, `db.seed`, `services.pipeline`, `services.scan_service` |
-| `app/api/deps.py` | Shared FastAPI dependencies: DB session, current-user resolution. **Auth currently bypassed here (uncommitted).** | `core.exceptions`, `core.security`, `db.session`, `models.enums`, `models.user`, `repositories.user_repo` | `api.v1.auth`, `api.v1.cohort`, `api.v1.fis`, `api.v1.health`, `api.v1.patients`, `api.v1.scans` |
-| `app/api/v1/auth.py` | Login / token issue / refresh endpoints. | `api.deps`, `core.exceptions`, `core.security`, `repositories.user_repo`, `schemas.auth` | `api.v1.router` |
+| `app/__init__.py` | Package marker. No logic. | - | `api.deps`, `api.v1.auth`, `api.v1.cohort`, `api.v1.export`, `api.v1.patients`, `api.v1.router`, `api.v1.scans`, `api.v1.study`, `cli.create_user`, `db.seed`, `services.cohort_import`, `services.pipeline`, `services.rescore`, `services.scan_service`, `services.volumetry_providers` |
+| `app/api/deps.py` | Shared FastAPI dependencies: DB session, current-user resolution under `AUTH_MODE`, role checks. | `core.config`, `core.exceptions`, `core.security`, `db.session`, `models.enums`, `models.user`, `repositories.user_repo` | `api.v1.auth`, `api.v1.cohort`, `api.v1.export`, `api.v1.fis`, `api.v1.health`, `api.v1.patients`, `api.v1.scans`, `api.v1.study` |
+| `app/api/v1/auth.py` | Login / token issue / refresh endpoints. Registration is closed when auth is required. | `api.deps`, `core.config`, `core.exceptions`, `core.security`, `repositories.user_repo`, `schemas.auth` | `api.v1.router` |
 | `app/api/v1/cohort.py` | Cohort-level aggregate endpoints (stage distribution, counts). | `api.deps`, `repositories.patient_repo`, `schemas.cohort` | `api.v1.router` |
-| `app/api/v1/fis.py` | Direct fuzzy-inference endpoints: `/fis/simulate` what-if, biomarker definitions, rule list. | `api.deps`, `core.config`, `models.enums`, `schemas.fis`, `services.biomarkers`, `services.fis_engine` | `api.v1.router` |
+| `app/api/v1/export.py` | Research export (`/export/results.csv`), researcher/admin only. The only endpoint that returns the reference label. | `api.deps`, `models.enums`, `models.user`, `repositories.study_repo`, `services.audit`, `services.export_service` | `api.v1.router` |
+| `app/api/v1/fis.py` | Direct fuzzy-inference endpoints: `/fis/simulate` what-if, biomarker definitions, rule list. | `api.deps`, `core.config`, `core.exceptions`, `models.enums`, `schemas.fis`, `services.calibration`, `services.fis_engine` | `api.v1.router` |
 | `app/api/v1/health.py` | Liveness/readiness and app metadata. | `api.deps`, `core.config` | `api.v1.router` |
 | `app/api/v1/patients.py` | Patient CRUD and listing. | `api.deps`, `core.exceptions`, `models.enums`, `repositories.patient_repo`, `schemas.patient` | `api.v1.router` |
-| `app/api/v1/router.py` | Mounts every v1 sub-router under the configured prefix. | `api.v1.auth`, `api.v1.cohort`, `api.v1.fis`, `api.v1.health`, `api.v1.patients`, `api.v1.scans` | `main` |
-| `app/api/v1/scans.py` | Scan upload, synthetic-scan creation, scan read, clinician review. | `api.deps`, `core.config`, `core.exceptions`, `models.enums`, `repositories.patient_repo`, `schemas.scan`, `services.scan_service` | `api.v1.router` |
-| `app/core/config.py` | Pydantic `Settings`, env-sourced. Holds `uncertainty_review_threshold` - see C6. | - | `api.v1.fis`, `api.v1.health`, `api.v1.scans`, `core.logging`, `core.security`, `db.session`, `main`, `services.pipeline`, `services.scan_service` |
-| `app/core/exceptions.py` | Domain exception types and their HTTP mappings. | `core.security` | `api.deps`, `api.v1.auth`, `api.v1.patients`, `api.v1.scans`, `main`, `services.pipeline`, `services.preprocessing`, `services.scan_service`, `services.volumetry` |
-| `app/core/logging.py` | structlog configuration and logger factory. | `core.config` | `db.seed`, `main`, `middleware.logging`, `services.scan_service` |
-| `app/core/security.py` | Password hashing (bcrypt) and JWT encode/decode. | `core.config` | `api.deps`, `api.v1.auth`, `core.exceptions`, `db.seed`, `main`, `repositories.user_repo` |
-| `app/db/base.py` | Declarative `Base` plus UUID-PK and timestamp mixins. | - | `main`, `models.patient`, `models.scan`, `models.user` |
-| `app/db/seed.py` | Deterministic demo seeding. **Labels phantom patients as OASIS/ADNI/Clinic - see C1.** | `core.logging`, `core.security`, `models.enums`, `repositories.patient_repo`, `repositories.user_repo`, `services.scan_service` | - |
-| `app/db/session.py` | Async engine and sessionmaker. | `core.config` | `api.deps`, `main` |
-| `app/main.py` | App factory: middleware, exception handlers, router mount, lifespan. | `api.v1.router`, `core.config`, `core.exceptions`, `core.logging`, `core.security`, `db.base`, `db.session`, `middleware.logging`, `models` | - |
+| `app/api/v1/router.py` | Mounts every v1 sub-router under the configured prefix. | `api.v1.auth`, `api.v1.cohort`, `api.v1.export`, `api.v1.fis`, `api.v1.health`, `api.v1.patients`, `api.v1.scans`, `api.v1.study` | `main` |
+| `app/api/v1/scans.py` | Scan ingestion (NIfTI upload, DICOM zip, FreeSurfer stats, manual biomarkers, stats attachment, synthetic), scan read, clinician review. | `api.deps`, `core.config`, `core.exceptions`, `core.identifiers`, `core.rate_limit`, `models.enums`, `models.patient`, `models.scan`, `repositories.patient_repo`, `schemas.biomarkers`, `schemas.scan`, `services.audit`, `services.biomarker_derivation`, `services.calibration`, `services.dicom_ingest`, `services.freesurfer_stats`, `services.pipeline`, `services.scan_service`, `services.upload_validation`, `services.volumetry_providers` | `api.v1.router` |
+| `app/api/v1/study.py` | Blind clinician-rating study: cases as biomarkers only, one rating per rater per scan. | `api.deps`, `core.exceptions`, `models.enums`, `models.scan`, `models.study`, `models.user`, `repositories.study_repo`, `schemas.study`, `services.audit` | `api.v1.router` |
+| `app/cli/create_user.py` | Command line: create a user or change a role. | `core.logging`, `core.security`, `db.session`, `models.enums`, `models.user`, `repositories.user_repo`, `services.audit` | - |
+| `app/cli/import_cohort.py` | Command line: import a cohort CSV or a FreeSurfer stats folder. | `core.logging`, `db.session`, `models.enums`, `services.cohort_import` | - |
+| `app/cli/rescore.py` | Command line: re-score stored scans under the active calibration. | `core.logging`, `db.session`, `models.enums`, `services.calibration`, `services.rescore` | - |
+| `app/core/config.py` | Pydantic `Settings`, env-sourced. Refuses demo auth or the placeholder secret in production. Holds `uncertainty_review_threshold` - see C6. | - | `api.deps`, `api.v1.auth`, `api.v1.fis`, `api.v1.health`, `api.v1.scans`, `core.logging`, `core.rate_limit`, `core.security`, `core.startup_checks`, `db.session`, `main`, `services.biomarker_derivation`, `services.calibration`, `services.dicom_ingest`, `services.pipeline`, `services.scan_service`, `services.upload_validation`, `services.volumetry_providers` |
+| `app/core/exceptions.py` | Domain exception types and their HTTP mappings; validation errors without input echo. | `core.rate_limit`, `core.security` | `api.deps`, `api.v1.auth`, `api.v1.fis`, `api.v1.patients`, `api.v1.scans`, `api.v1.study`, `main`, `services.biomarker_derivation`, `services.dicom_ingest`, `services.freesurfer_stats`, `services.pipeline`, `services.preprocessing`, `services.scan_service`, `services.upload_validation`, `services.volumetry`, `services.volumetry_providers` |
+| `app/core/identifiers.py` | Shape check for research subject identifiers. | - | `api.v1.scans`, `schemas.biomarkers`, `services.cohort_import` |
+| `app/core/logging.py` | structlog configuration and logger factory. | `core.config` | `cli.create_user`, `cli.import_cohort`, `cli.rescore`, `core.startup_checks`, `db.seed`, `main`, `middleware.logging`, `services.cohort_import`, `services.dicom_ingest`, `services.rescore`, `services.scan_service`, `services.volumetry_providers` |
+| `app/core/rate_limit.py` | Per-client rate limiter and the default-limit ASGI middleware. | `core.config` | `api.v1.scans`, `core.exceptions`, `main` |
+| `app/core/security.py` | Password hashing (bcrypt) and JWT encode/decode. | `core.config` | `api.deps`, `api.v1.auth`, `cli.create_user`, `core.exceptions`, `db.seed`, `main`, `repositories.user_repo` |
+| `app/core/startup_checks.py` | Startup checks: uploads directory not static-served, demo-mode warning. | `core.config`, `core.logging` | `main` |
+| `app/db/base.py` | Declarative `Base` plus UUID-PK and timestamp mixins. | - | `db.schema`, `models.audit`, `models.patient`, `models.scan`, `models.study`, `models.user` |
+| `app/db/schema.py` | Startup schema check: creates and stamps an empty SQLite DB, refuses a stale one. | `db.base` | `main` |
+| `app/db/seed.py` | Deterministic demo seeding. Every seeded patient is labelled PHANTOM. | `core.logging`, `core.security`, `models.enums`, `repositories.patient_repo`, `repositories.user_repo`, `services.scan_service` | - |
+| `app/db/session.py` | Async engine and sessionmaker. | `core.config` | `api.deps`, `cli.create_user`, `cli.import_cohort`, `cli.rescore`, `main`, `services.volumetry_providers` |
+| `app/main.py` | App factory: middleware, exception handlers, router mount, lifespan. | `api.v1.router`, `core.config`, `core.exceptions`, `core.logging`, `core.rate_limit`, `core.security`, `core.startup_checks`, `db.schema`, `db.session`, `middleware.logging`, `models`, `services.calibration`, `services.volumetry_providers` | - |
 | `app/middleware/logging.py` | Per-request structured access logging. Only direct consumer of `starlette`. | `core.logging` | `main` |
-| `app/models/__init__.py` | Imports every model so Alembic autogenerate sees them. | `models.patient`, `models.scan`, `models.user` | `main` |
-| `app/models/enums.py` | `Stage`, `BiomarkerKey`, `ScanStatus`, `DataSource`, `Sex`, `UserRole`. **`DataSource` has no phantom value - see C1.** | - | `api.deps`, `api.v1.fis`, `api.v1.patients`, `api.v1.scans`, `db.seed`, `models.patient`, `models.scan`, `models.user`, `repositories.patient_repo`, `schemas.auth`, `schemas.cohort`, `schemas.fis`, `schemas.patient`, `schemas.scan`, `services.biomarkers`, `services.fis_engine`, `services.pipeline`, `services.scan_service`, `services.volumetry` |
-| `app/models/patient.py` | Patient ORM entity. | `db.base`, `models.enums`, `models.scan`, `models.user` | `models`, `models.scan`, `models.user`, `repositories.patient_repo`, `schemas.patient` |
-| `app/models/scan.py` | `Scan`, `BiomarkerReading`, `FISResult` ORM entities. | `db.base`, `models.enums`, `models.patient` | `models`, `models.patient`, `repositories.patient_repo`, `schemas.scan`, `services.scan_service` |
-| `app/models/user.py` | Clinician/admin user entity. | `db.base`, `models.enums`, `models.patient` | `api.deps`, `models`, `models.patient`, `repositories.user_repo` |
-| `app/repositories/patient_repo.py` | Patient and scan persistence queries. | `models.enums`, `models.patient`, `models.scan` | `api.v1.cohort`, `api.v1.patients`, `api.v1.scans`, `db.seed`, `services.scan_service` |
-| `app/repositories/user_repo.py` | User lookup and creation. | `core.security`, `models.user` | `api.deps`, `api.v1.auth`, `db.seed` |
+| `app/models/__init__.py` | Imports every model so Alembic autogenerate sees them. | `models.audit`, `models.patient`, `models.scan`, `models.study`, `models.user` | `main` |
+| `app/models/audit.py` | `AuditLog` ORM entity. Append-only, no free-text column. | `db.base` | `models`, `services.audit` |
+| `app/models/enums.py` | `Stage`, `BiomarkerKey`, `ScanStatus`, `DataSource` (incl. `PHANTOM`), `ExtractionMethod`, `Sex`, `UserRole`. | - | `api.deps`, `api.v1.export`, `api.v1.fis`, `api.v1.patients`, `api.v1.scans`, `api.v1.study`, `cli.create_user`, `cli.import_cohort`, `cli.rescore`, `db.seed`, `models.patient`, `models.scan`, `models.study`, `models.user`, `repositories.patient_repo`, `repositories.study_repo`, `repositories.user_repo`, `schemas.auth`, `schemas.biomarkers`, `schemas.cohort`, `schemas.fis`, `schemas.patient`, `schemas.scan`, `schemas.study`, `services.biomarker_derivation`, `services.biomarkers`, `services.calibration`, `services.cohort_import`, `services.export_service`, `services.fis_engine`, `services.pipeline`, `services.rescore`, `services.scan_service`, `services.volumetry`, `services.volumetry_providers` |
+| `app/models/patient.py` | Patient ORM entity. | `db.base`, `models.enums`, `models.scan`, `models.user` | `api.v1.scans`, `models`, `models.scan`, `models.user`, `repositories.patient_repo`, `repositories.study_repo`, `schemas.patient`, `services.scan_service`, `services.volumetry_providers` |
+| `app/models/scan.py` | `Scan` (with provenance and the research-only reference label), `BiomarkerReading`, `FISResult` ORM entities. | `db.base`, `models.enums`, `models.patient` | `api.v1.scans`, `api.v1.study`, `models`, `models.patient`, `models.study`, `repositories.patient_repo`, `repositories.study_repo`, `schemas.scan`, `services.export_service`, `services.scan_service`, `services.volumetry_providers` |
+| `app/models/study.py` | `ClinicianRating` ORM entity. | `db.base`, `models.enums`, `models.scan`, `models.user` | `api.v1.study`, `models`, `repositories.study_repo`, `schemas.study`, `services.export_service` |
+| `app/models/user.py` | Clinician / researcher / admin user entity. | `db.base`, `models.enums`, `models.patient` | `api.deps`, `api.v1.export`, `api.v1.study`, `cli.create_user`, `models`, `models.patient`, `models.study`, `repositories.user_repo`, `services.audit` |
+| `app/repositories/patient_repo.py` | Patient and scan persistence queries. | `models.enums`, `models.patient`, `models.scan` | `api.v1.cohort`, `api.v1.patients`, `api.v1.scans`, `db.seed`, `services.cohort_import`, `services.scan_service`, `services.volumetry_providers` |
+| `app/repositories/study_repo.py` | Queries for the rating study and the research export. | `models.enums`, `models.patient`, `models.scan`, `models.study` | `api.v1.export`, `api.v1.study`, `services.rescore` |
+| `app/repositories/user_repo.py` | User lookup and creation. | `core.security`, `models.enums`, `models.user` | `api.deps`, `api.v1.auth`, `cli.create_user`, `db.seed` |
 | `app/schemas/auth.py` | Login/token request and response models. Uses `EmailStr`. | `models.enums`, `schemas.base` | `api.v1.auth` |
-| `app/schemas/base.py` | `CamelModel` - the camelCase JSON contract base. | - | `schemas.auth`, `schemas.cohort`, `schemas.fis`, `schemas.patient`, `schemas.scan` |
+| `app/schemas/base.py` | `CamelModel` - the camelCase JSON contract base. | - | `schemas.auth`, `schemas.biomarkers`, `schemas.cohort`, `schemas.fis`, `schemas.patient`, `schemas.scan`, `schemas.study` |
+| `app/schemas/biomarkers.py` | Request models for biomarkers measured outside this service. | `core.identifiers`, `models.enums`, `schemas.base` | `api.v1.scans` |
 | `app/schemas/cohort.py` | Cohort summary response models. | `models.enums`, `schemas.base` | `api.v1.cohort` |
 | `app/schemas/fis.py` | FIS result, fired rule, biomarker definition and curve models. | `models.enums`, `schemas.base` | `api.v1.fis`, `schemas.scan` |
 | `app/schemas/patient.py` | Patient request/response models. | `models.enums`, `models.patient`, `schemas.base`, `schemas.scan` | `api.v1.patients` |
 | `app/schemas/scan.py` | Scan request/response models. | `models.enums`, `models.scan`, `schemas.base`, `schemas.fis` | `api.v1.scans`, `schemas.patient` |
-| `app/services/biomarkers.py` | Fuzzy set definitions, `trapmf`, fuzzification, abnormality scoring. **C2, C3, C7, C8 live here.** | `models.enums` | `api.v1.fis`, `services.fis_engine`, `services.pipeline`, `services.scan_service` |
-| `app/services/fis_engine.py` | Rule base and inference. **Not Mamdani/centroid - see C10. C4 and C5 live here.** | `models.enums`, `services.biomarkers` | `api.v1.fis`, `services.pipeline` |
-| `app/services/pipeline.py` | Orchestrates preprocess -> volumetry -> inference, for file and synthetic inputs. | `core.config`, `core.exceptions`, `models.enums`, `services.biomarkers`, `services.fis_engine`, `services.preprocessing`, `services.synthetic_mri`, `services.volumetry` | `services.scan_service` |
+| `app/schemas/study.py` | Blinded study case and rating models. | `models.enums`, `models.study`, `schemas.base` | `api.v1.study` |
+| `app/services/audit.py` | Writes audit entries; refuses any detail value that is not a number or a code. | `models.audit`, `models.user` | `api.v1.export`, `api.v1.scans`, `api.v1.study`, `cli.create_user`, `services.cohort_import`, `services.rescore` |
+| `app/services/biomarker_derivation.py` | Pure derivations from parsed volumes to the three engine inputs, with units and plausibility QC flags. `compute_vbr` lives here. | `core.config`, `core.exceptions`, `models.enums`, `services.biomarkers`, `services.fis_engine`, `services.freesurfer_stats` | `api.v1.scans`, `services.cohort_import`, `services.pipeline`, `services.scan_service`, `services.volumetry_providers` |
+| `app/services/biomarkers.py` | `trapmf`, `BiomarkerDef`, the structural half of each biomarker. No numbers: those are in `app/calibration/`. **C7 lives here.** | `models.enums`, `services.calibration` | `services.biomarker_derivation`, `services.calibration`, `services.fis_engine`, `services.volumetry` |
+| `app/services/calibration.py` | Loads and validates calibration JSON; data-domain gating. **C3, C8 values are in `app/calibration/phantom.v0.json`.** | `core.config`, `models.enums`, `services.biomarkers` | `api.v1.fis`, `api.v1.scans`, `cli.rescore`, `main`, `services.biomarkers`, `services.cohort_import`, `services.fis_engine`, `services.pipeline`, `services.rescore`, `services.scan_service`, `services.volumetry_providers` |
+| `app/services/cohort_import.py` | Cohort import: CSV or stats folder plus demographics. Never defaults a missing CDR. | `core.identifiers`, `core.logging`, `models.enums`, `repositories.patient_repo`, `services.audit`, `services.biomarker_derivation`, `services.calibration`, `services.freesurfer_stats`, `services.pipeline`, `services.scan_service` | `cli.import_cohort` |
+| `app/services/dicom_ingest.py` | DICOM zip: safe unpack, de-identification gate, conversion to NIfTI, deletion. | `core.config`, `core.exceptions`, `core.logging` | `api.v1.scans` |
+| `app/services/export_service.py` | Builds the research export rows and renders CSV. | `models.enums`, `models.scan`, `models.study` | `api.v1.export` |
+| `app/services/fis_engine.py` | Rule base, inference, indeterminate results, centroid defuzzification. **C5 lives here.** | `models.enums`, `services.biomarkers`, `services.calibration` | `api.v1.fis`, `services.biomarker_derivation`, `services.pipeline`, `services.scan_service` |
+| `app/services/freesurfer_stats.py` | Parser for FreeSurfer / FastSurfer aseg and aparc stats. | `core.exceptions` | `api.v1.scans`, `services.biomarker_derivation`, `services.cohort_import`, `services.volumetry_providers` |
+| `app/services/pipeline.py` | Orchestrates measurement -> calibration -> inference for file, synthetic and externally measured inputs. | `core.config`, `core.exceptions`, `models.enums`, `services.biomarker_derivation`, `services.calibration`, `services.fis_engine`, `services.preprocessing`, `services.synthetic_mri`, `services.volumetry` | `api.v1.scans`, `services.cohort_import`, `services.scan_service`, `services.volumetry_providers` |
 | `app/services/preprocessing.py` | NIfTI load, bias correction, normalisation, brain masking. | `core.exceptions` | `services.pipeline`, `services.volumetry` |
-| `app/services/scan_service.py` | Persists scan runs and their biomarker/FIS results; drives status transitions. | `core.config`, `core.exceptions`, `core.logging`, `models.enums`, `models.scan`, `repositories.patient_repo`, `services.biomarkers`, `services.pipeline` | `api.v1.scans`, `db.seed` |
+| `app/services/rescore.py` | Re-runs the engine on stored biomarker readings after the calibration changes. | `core.logging`, `models.enums`, `repositories.study_repo`, `services.audit`, `services.calibration`, `services.scan_service` | `cli.rescore` |
+| `app/services/scan_service.py` | Persists scan runs and their biomarker/FIS results; drives status transitions; keeps phantom and real data on separate patients. | `core.config`, `core.exceptions`, `core.logging`, `models.enums`, `models.patient`, `models.scan`, `repositories.patient_repo`, `services.biomarker_derivation`, `services.calibration`, `services.fis_engine`, `services.pipeline` | `api.v1.scans`, `db.seed`, `services.cohort_import`, `services.rescore`, `services.volumetry_providers` |
 | `app/services/synthetic_mri.py` | The phantom generator. Regression fixture - must not be removed. | - | `services.pipeline`, `services.volumetry` |
-| `app/services/volumetry.py` | Tissue segmentation and biomarker extraction. **No ICV computed - see C2, C9.** | `core.exceptions`, `models.enums`, `services.preprocessing`, `services.synthetic_mri` | `services.pipeline` |
+| `app/services/upload_validation.py` | Upload storage with size limit, file type by magic bytes, NIfTI sanitising. | `core.config`, `core.exceptions` | `api.v1.scans` |
+| `app/services/volumetry.py` | Phantom-tuned tissue segmentation and biomarker extraction. **C9 lives here.** | `core.exceptions`, `models.enums`, `services.biomarkers`, `services.preprocessing`, `services.synthetic_mri` | `services.pipeline` |
+| `app/services/volumetry_providers.py` | Volumetry providers (external, fastsurfer_docker, inhouse) and the FastSurfer background job. | `core.config`, `core.exceptions`, `core.logging`, `db.session`, `models.enums`, `models.patient`, `models.scan`, `repositories.patient_repo`, `services.biomarker_derivation`, `services.calibration`, `services.freesurfer_stats`, `services.pipeline`, `services.scan_service` | `api.v1.scans`, `main` |
 <!-- END GENERATED: backend-file-reference -->
 
 ---
@@ -201,25 +250,39 @@ the engine does not produce. See C10.
 ## 7. Clinical assumption register
 
 Every number below reaches a clinical output and has no documented source.
-Each is marked in the code with a `TODO(clinical: Cn)` comment pointing back
-to this table. **Nothing here was changed in Phase 0** — these are for review
+**Nothing here was changed in Phase 0**; the register was written for review
 with the neurologist.
 
-| ID | Assumption | Location |
-|---|---|---|
-| C1 | Phantom-generated patients are stamped `OASIS` / `ADNI` / `Clinic`. `DataSource` has no phantom value, so phantom data cannot currently be labelled honestly. Violates the project's own provenance constraint. | `db/seed.py`, `models/enums.py` |
-| C2 | Hippocampal volume is *described to clinicians* as "normalized for intracranial volume". No ICV is computed anywhere in the repository. Not merely uncorrected — mislabelled as corrected. | `services/biomarkers.py`, `services/volumetry.py` |
-| C3 | VBR and cortical thickness breakpoints are calibrated to the 2mm phantom, not to clinical scales (normal cortex reads 5.6–6.0 "mm" against a real ~2.5mm), yet are presented with clinical unit strings. | `services/biomarkers.py` |
-| C4 | The no-rule-fires branch claims to avoid defaulting to a stage, but the stable sort over a three-way tie resolves to enum order and always returns **CN** — the reassuring answer — precisely when the system knows nothing. | `services/fis_engine.py` |
-| C5 | Rule R6 is scaled by `0.75` while every other rule is weighted 1.0. Encodes a clinical stance on how much one severe biomarker is worth, as a bare literal. | `services/fis_engine.py` |
-| C6 | Review threshold is `uncertainty >= 45.0`, on a 0–100 scale with inverted polarity relative to the specified "confidence below 0.65". Two different quantities. | `core/config.py`, `services/fis_engine.py` |
-| C7 | `abnormality = worst + 0.5 * borderline`. Asserts a fully borderline biomarker is exactly half as concerning as a fully abnormal one. Rendered to clinicians as a severity bar. | `services/biomarkers.py` |
-| C8 | Displayed `normal_range` disagrees with the NORMAL fuzzy set. Hippocampus advertises 3.0–4.5 mL while the set plateaus 3.6–6.0; a 5.0 reads abnormal on screen and fully normal to the engine. | `services/biomarkers.py` |
-| C9 | Four phantom-fitted tissue reference intensities, plus a Gaussian width derived from them, underpin every biomarker in the system. Honestly documented in-module; recorded here because all downstream numbers trace to them. | `services/volumetry.py` |
-| C10 | **The engine is not Mamdani and performs no defuzzification**, despite its docstring. It takes the max firing strength per stage and normalises the three to sum to 1. There is no output universe, no aggregated fuzzy set, and no centroid. The UI renders the result as a confidence percentage. | `services/fis_engine.py`, `components/patient/confidence-ring.tsx` |
+The real-data readiness work closed the items that were mechanics or
+labelling, and left every item that is a number or a clinical judgement
+open for the ML and clinical team. "Closed" means the behaviour described
+no longer exists in the code; the commit is where it was removed. Every
+open item is still marked where it lives with a `TODO(clinical: Cn)`
+comment, in the code or in `app/calibration/phantom.v0.json`.
 
-C10 is the structural one. `stage_score`, a sampled output set to plot, and
-the continuous CN→MCI→AD axis that the clinician UI is meant to be built
-around do not exist to be corrected — they would have to be built, and doing
-so requires output-set breakpoints on a new axis. That is a decision for the
-neurologist, not a coding choice.
+| ID | Assumption | Location | Status |
+|---|---|---|---|
+| C1 | Phantom-generated patients are stamped `OASIS` / `ADNI` / `Clinic`. `DataSource` has no phantom value, so phantom data cannot currently be labelled honestly. Violates the project's own provenance constraint. | `db/seed.py`, `models/enums.py` | **Closed in `27db4c2`.** `DataSource.PHANTOM` exists, the seed uses it, a synthetic scan relabels its patient, and the migration relabels existing rows. Phantom and real data cannot share a patient. |
+| C2 | Hippocampal volume is *described to clinicians* as "normalized for intracranial volume". No ICV is computed anywhere in the repository. Not merely uncorrected: mislabelled as corrected. | `calibration/phantom.v0.json`, `services/biomarker_derivation.py` | **Labelling closed in `fc99405` and `d71179b`.** The phantom value is now described as a raw mL volume, not ICV-normalised. Real data is genuinely normalised: (L + R) / ICV x 1000, unit `‰ICV`. The phantom volumetry still computes no ICV, which is correct for what it now claims. |
+| C3 | VBR and cortical thickness breakpoints are calibrated to the 2mm phantom, not to clinical scales (normal cortex reads 5.6 to 6.0 "mm" against a real ~2.5mm), yet are presented with clinical unit strings. | `calibration/phantom.v0.json` | **Open.** The numbers are unchanged; they moved from `services/biomarkers.py` into the calibration file. The engine now refuses to apply them to real data, but the phantom demo still shows them with `%` and `mm`. |
+| C4 | The no-rule-fires branch claims to avoid defaulting to a stage, but the stable sort over a three-way tie resolves to enum order and always returns **CN**, the reassuring answer, precisely when the system knows nothing. | `services/fis_engine.py` | **Closed in `fc99405`.** No rule firing gives an indeterminate result: `stage` null, `needsReview` true. Stored results of this kind were corrected by the migration. |
+| C5 | Rule R6 is scaled by `0.75` while every other rule is weighted 1.0. Encodes a clinical stance on how much one severe biomarker is worth, as a bare literal. | `services/fis_engine.py` | **Open.** Untouched. |
+| C6 | Review threshold is `uncertainty >= 45.0`, on a 0 to 100 scale with inverted polarity relative to the specified "confidence below 0.65". Two different quantities. | `core/config.py`, `services/fis_engine.py` | **Open.** Untouched. Indeterminate results are always flagged for review regardless of the threshold. |
+| C7 | `abnormality = worst + 0.5 * borderline`. Asserts a fully borderline biomarker is exactly half as concerning as a fully abnormal one. Rendered to clinicians as a severity bar. | `services/biomarkers.py` | **Open.** Untouched. `abnormality` is now null when the calibration does not apply to the value, instead of a number computed from the wrong breakpoints. |
+| C8 | Displayed `normal_range` disagrees with the NORMAL fuzzy set. Hippocampus advertises 3.0 to 4.5 mL while the set plateaus 3.6 to 6.0; a 5.0 reads abnormal on screen and fully normal to the engine. | `calibration/phantom.v0.json` | **Open.** The numbers are unchanged; they moved into the calibration file. |
+| C9 | Four phantom-fitted tissue reference intensities, plus a Gaussian width derived from them, underpin every biomarker in the system. Honestly documented in-module; recorded here because all downstream numbers trace to them. | `services/volumetry.py` | **Open.** Untouched. They now underpin phantom biomarkers only: the in-house volumetry is refused for any non-phantom patient. |
+| C10 | **The engine is not Mamdani and performs no defuzzification**, despite its docstring. It takes the max firing strength per stage and normalises the three to sum to 1. There is no output universe, no aggregated fuzzy set, and no centroid. The UI renders the result as a confidence percentage. | `services/fis_engine.py`, `calibration/*.json`, `components/patient/confidence-ring.tsx` | **Mechanics implemented in `fc99405`; the clinical part is open.** `defuzzify_centroid` clips each stage's output set at its activation, max-aggregates and returns the centroid on a 0 to 1 axis as `severity`. The output sets are read from the calibration file, and the ones shipped are placeholders marked `provisional`. Still open: real output sets, and the confidence ring, which still presents a share of rule activation as a percentage. |
+
+### What is still open, and whose it is
+
+- **Numbers (ML and clinical team):** C3, C5, C6, C7, C8, C9, and the output
+  sets in C10. A real calibration file (see the runbook, section D)
+  replaces the breakpoints in C3 and C8 for real data and supplies real
+  output sets. C5, C6 and C7 are literals in code or settings and need a
+  decision before they change.
+- **Frontend:** the confidence ring in C10, and showing an indeterminate
+  result as something other than a stage.
+
+`stage`, `confidence` and `uncertainty` are computed exactly as before for
+every case the engine does stage. That is pinned by golden values captured
+from the engine at commit `6619ffe` (`tests/test_engine_contract.py`).

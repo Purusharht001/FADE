@@ -4,6 +4,7 @@
   "domain": "phantom",
   "provisional": true,
   "notes": "Breakpoints fitted to the synthetic 2 mm phantom in app/services/synthetic_mri.py, moved here unchanged from app/services/biomarkers.py. Valid only for values measured by the in-house phantom volumetry. They are not clinical thresholds: the engine refuses to stage real data with this file.",
+  "open_assumptions": "TODO(clinical: C3) the ventricle_brain_ratio and cortical_thickness breakpoints are on the phantom's scale, not a clinical one, yet carry clinical unit strings. TODO(clinical: C8) hippocampal_volume.normal_range (3.0-4.5) disagrees with its normal set, which plateaus from 3.6 to 6.0. Both are tracked in docs/ARCHITECTURE.md and are deliberately left unchanged here.",
   "biomarkers": {
     "hippocampal_volume": {
       "unit": "mL",

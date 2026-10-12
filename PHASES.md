@@ -60,8 +60,18 @@ today against a synthetic MRI phantom
 scans. Swapping in real data means pointing `preprocess_file()` at real NIfTI files — the code doesn't
 change.
 
+**Real-data readiness (backend):** the route for real data does not go through this in-house
+preprocessing, which stays phantom-only. Real scans are segmented by FreeSurfer or FastSurfer, and
+the backend ingests the result. What exists: an OASIS cohort import CLI
+(`backend/scripts/import_cohort.py`), hardened NIfTI and DICOM uploads with a de-identification
+gate, and three volumetry providers (stats attached by hand, FastSurfer in Docker, or the in-house
+phantom path). What does not exist yet: any real data in the system. The FastSurfer and `dcm2niix`
+paths are tested with stand-ins and have not been run for real. See
+[`docs/REAL_DATA_RUNBOOK.md`](docs/REAL_DATA_RUNBOOK.md).
+
 **Key tasks:**
-- Download/organize OASIS (and ADNI once access is granted). *(blocked on Phase 1)*
+- Download/organize OASIS (and ADNI once access is granted). *(blocked on Phase 1; the import tool
+  is ready)*
 - ~~Build preprocessing pipeline: skull stripping, bias field correction, spatial normalization,
   intensity normalization~~ — done.
 - Validate the pipeline runs cleanly across OASIS's scanner/protocol variety — this is your rehearsal
@@ -91,13 +101,22 @@ can't isolate a small, low-contrast structure like the hippocampus from its much
 monotonicity and plausible magnitude against the phantom's own ground truth across severities and
 multiple random seeds — see `backend/tests/test_pipeline.py`.
 
+**Real-data readiness (backend):** FreeSurfer and FastSurfer stats files are parsed
+([`backend/app/services/freesurfer_stats.py`](backend/app/services/freesurfer_stats.py)) and turned
+into the three biomarkers by documented formulas
+([`backend/app/services/biomarker_derivation.py`](backend/app/services/biomarker_derivation.py)):
+hippocampal volume as per-mille of intracranial volume, ventricle-to-brain ratio, and mean cortical
+thickness over five temporal regions. Values outside plausible bounds are flagged rather than
+trusted. The VBR formula is not yet confirmed against the team's earlier value for OAS1_0001_MR1.
+The in-house segmentation below is unchanged and is now refused for anything but phantom data.
+
 **Key tasks:**
 - Integrate a segmentation tool (e.g. FreeSurfer/FSL FIRST) or train/apply a segmentation model.
-  *(deferred — see Status; real tool integration is the swap-in point once Phase 1 data exists)*
+  *(done as ingestion: the backend reads FreeSurfer/FastSurfer output and can launch FastSurfer in
+  Docker; that launch path has not been run against a real container yet)*
 - ~~Extract: hippocampal volume, ventricle-to-brain ratio, cortical thickness~~ — done.
-- Normalize volumetric measures against intracranial volume (head-size correction) — without this,
-  biomarker values aren't comparable across subjects. *(not yet needed — single fixed phantom scale;
-  revisit once real, variable-sized scans are in play)*
+- ~~Normalize volumetric measures against intracranial volume (head-size correction)~~ — done for
+  real data. The phantom measurement is a raw mL volume and is now labelled as such.
 - Sanity-check extracted values against published normative ranges before trusting them as FIS input.
   *(the phantom's own achievable ranges required recalibrating the fuzzy breakpoints away from
   literal clinical numbers — see `backend/app/services/biomarkers.py`'s docstring for why)*
@@ -125,8 +144,20 @@ membership-function breakpoints are the team's own literature-informed guesses, 
 Dr. Deshmukh — this is the one item in this phase that's still exactly as open as the phase originally
 described, and is the highest-value next conversation with him.
 
+**Real-data readiness (backend):** the engine's numbers no longer live in code. Every breakpoint,
+unit and output set is read from a versioned calibration file
+([`backend/app/calibration/`](backend/app/calibration/)). `phantom.v0.json` holds the previous
+values unchanged; `real.template.json` is the same structure with every number empty, for the ML
+teammate to fill in. The engine now returns an explicit *indeterminate* result, with no stage,
+when it has no basis for one: no rule fired (this used to come back as CN), a biomarker is missing,
+a value is implausible, or the data is real and the calibration is not. It also computes a 0-1
+severity by centroid defuzzification, from output sets that are placeholders for now. **Until a
+real calibration file exists, no real case receives a stage.** Stage, confidence and uncertainty
+for phantom cases are computed exactly as before.
+
 **Key tasks:**
-- ~~Define linguistic variables and membership functions per biomarker~~ — done, literature-informed.
+- ~~Define linguistic variables and membership functions per biomarker~~ — done for the phantom,
+  literature-informed. **Open for real data:** this is the calibration file.
 - Design the rule base with Dr. Deshmukh directly — this is the step the proposal singles out as the
   key differentiator, treat it as a real working session, not a formality. **Still open.**
 - ~~Choose inference approach (Mamdani for interpretability vs. Sugeno)~~ — done, Mamdani.
@@ -154,6 +185,13 @@ ties that to persistence (SQLAlchemy models, a Postgres/SQLite-backed API). A cl
 frontend, once wired up — hits `POST /api/v1/patients/{id}/scans/upload` (or `/scans/synthetic` for
 the demo phantom) and gets back a persisted `Scan` with biomarkers, fuzzy membership, fired rules, and
 a confidence/uncertainty score, via a documented REST API (`backend/README.md` has the full surface).
+
+**Real-data readiness (backend):** real data enters through `POST .../scans/freesurfer` (stats
+files), `.../scans/biomarkers` (numbers), `.../scans/upload` and `.../scans/upload-dicom` (image
+files) and `.../scans/{id}/stats` (stats attached later). Every scan records how it was measured,
+its raw volumes, its quality flags, and the calibration and engine versions that scored it. An
+audit log records sign-offs, ratings, exports and stats attachment. Authentication is now required
+outside demo mode.
 
 **Key tasks:**
 - ~~Wire Phases 2–4 into a single callable pipeline~~ — done.
@@ -189,11 +227,24 @@ on real patients.
 
 **Deliverables:** Benchmark results report ([`docs/BENCHMARK_OASIS1.md`](docs/BENCHMARK_OASIS1.md)), confusion matrix per dataset, comparison against reference literature.
 
+**Real-data readiness (backend):** the benchmark above was run in Colab, outside this backend. To
+evaluate the backend's own engine on the cohort, import it, install a calibration, and download
+`GET /api/v1/export/results.csv`: one row per scan with biomarkers, engine output, calibration
+version and the reference CDR. No such evaluation has been run yet.
+
 ---
 
 ## Phase 7 — Real-World Clinical Validation
 
 **Goal:** Test the generalization gap the proposal explicitly targets — the part prior work skipped.
+
+**Real-data readiness (backend):** the tooling for this phase exists; the study has not been
+run. Clinic scans can be uploaded (anonymised NIfTI or DICOM). A blind rating study is supported:
+`GET /api/v1/study/cases` shows a clinician each case as biomarkers only, without the engine's
+answer, and `POST /api/v1/study/cases/{id}/rating` records their call, whether they consider it
+borderline, and their confidence. The export puts those ratings beside the engine's output for the
+agreement analysis. One limit: the study endpoints hide the engine's output, but the same account
+can still see it on the triage screens, so raters need separate accounts and instructions.
 
 **Key tasks:**
 - Obtain anonymized, consented scans from Dr. Deshmukh's clinic (per Phase 1 protocol).
@@ -228,6 +279,13 @@ JWT auth is implemented but not enforced yet (every request resolves to a shared
 `backend/README.md`'s security notes), so the app is directly reachable while that flow isn't wired up
 frontend-side. Covered by a vitest + React Testing Library suite. See
 [`frontend/README.md`](frontend/README.md) for the API client / React Query architecture.
+
+**Real-data readiness:** the frontend was not changed by the backend work and is now behind the
+API in several ways. It has no login screen, and the API requires a token outside demo mode. It
+does not know the `PHANTOM` source, the `awaiting_volumetry` and `segmenting` scan states, or that
+a result's stage and a biomarker's abnormality can be empty. In particular an empty abnormality is
+currently drawn as "normal". These must be fixed before any real case is shown to a clinician. The
+sidebar still says "Synthetic demo data only", which stops being true once real cases are loaded.
 
 **Key tasks:**
 - ~~Build a minimal interface showing: input scan, extracted biomarkers, staged output, confidence

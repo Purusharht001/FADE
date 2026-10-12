@@ -23,11 +23,17 @@ END = "<!-- END GENERATED: backend-file-reference -->"
 RESPONSIBILITIES: dict[str, str] = {
     "app/__init__.py": "Package marker. No logic.",
     "app/api/deps.py": (
-        "Shared FastAPI dependencies: DB session, current-user resolution. "
-        "**Auth currently bypassed here (uncommitted).**"
+        "Shared FastAPI dependencies: DB session, current-user resolution under `AUTH_MODE`, "
+        "role checks."
     ),
-    "app/api/v1/auth.py": "Login / token issue / refresh endpoints.",
+    "app/api/v1/auth.py": (
+        "Login / token issue / refresh endpoints. Registration is closed when auth is required."
+    ),
     "app/api/v1/cohort.py": "Cohort-level aggregate endpoints (stage distribution, counts).",
+    "app/api/v1/export.py": (
+        "Research export (`/export/results.csv`), researcher/admin only. The only endpoint "
+        "that returns the reference label."
+    ),
     "app/api/v1/fis.py": (
         "Direct fuzzy-inference endpoints: `/fis/simulate` what-if, biomarker "
         "definitions, rule list."
@@ -35,57 +41,115 @@ RESPONSIBILITIES: dict[str, str] = {
     "app/api/v1/health.py": "Liveness/readiness and app metadata.",
     "app/api/v1/patients.py": "Patient CRUD and listing.",
     "app/api/v1/router.py": "Mounts every v1 sub-router under the configured prefix.",
-    "app/api/v1/scans.py": ("Scan upload, synthetic-scan creation, scan read, clinician review."),
+    "app/api/v1/scans.py": (
+        "Scan ingestion (NIfTI upload, DICOM zip, FreeSurfer stats, manual biomarkers, stats "
+        "attachment, synthetic), scan read, clinician review."
+    ),
+    "app/api/v1/study.py": (
+        "Blind clinician-rating study: cases as biomarkers only, one rating per rater per scan."
+    ),
+    "app/cli/create_user.py": "Command line: create a user or change a role.",
+    "app/cli/import_cohort.py": "Command line: import a cohort CSV or a FreeSurfer stats folder.",
+    "app/cli/rescore.py": "Command line: re-score stored scans under the active calibration.",
     "app/core/config.py": (
-        "Pydantic `Settings`, env-sourced. Holds `uncertainty_review_threshold` - see C6."
+        "Pydantic `Settings`, env-sourced. Refuses demo auth or the placeholder secret in "
+        "production. Holds `uncertainty_review_threshold` - see C6."
     ),
-    "app/core/exceptions.py": "Domain exception types and their HTTP mappings.",
+    "app/core/exceptions.py": (
+        "Domain exception types and their HTTP mappings; validation errors without input echo."
+    ),
+    "app/core/identifiers.py": "Shape check for research subject identifiers.",
     "app/core/logging.py": "structlog configuration and logger factory.",
+    "app/core/rate_limit.py": "Per-client rate limiter and the default-limit ASGI middleware.",
     "app/core/security.py": "Password hashing (bcrypt) and JWT encode/decode.",
-    "app/db/base.py": "Declarative `Base` plus UUID-PK and timestamp mixins.",
-    "app/db/seed.py": (
-        "Deterministic demo seeding. **Labels phantom patients as OASIS/ADNI/Clinic - see C1.**"
+    "app/core/startup_checks.py": (
+        "Startup checks: uploads directory not static-served, demo-mode warning."
     ),
+    "app/db/base.py": "Declarative `Base` plus UUID-PK and timestamp mixins.",
+    "app/db/schema.py": (
+        "Startup schema check: creates and stamps an empty SQLite DB, refuses a stale one."
+    ),
+    "app/db/seed.py": "Deterministic demo seeding. Every seeded patient is labelled PHANTOM.",
     "app/db/session.py": "Async engine and sessionmaker.",
     "app/main.py": "App factory: middleware, exception handlers, router mount, lifespan.",
     "app/middleware/logging.py": (
         "Per-request structured access logging. Only direct consumer of `starlette`."
     ),
     "app/models/__init__.py": "Imports every model so Alembic autogenerate sees them.",
+    "app/models/audit.py": "`AuditLog` ORM entity. Append-only, no free-text column.",
     "app/models/enums.py": (
-        "`Stage`, `BiomarkerKey`, `ScanStatus`, `DataSource`, `Sex`, `UserRole`. "
-        "**`DataSource` has no phantom value - see C1.**"
+        "`Stage`, `BiomarkerKey`, `ScanStatus`, `DataSource` (incl. `PHANTOM`), "
+        "`ExtractionMethod`, `Sex`, `UserRole`."
     ),
     "app/models/patient.py": "Patient ORM entity.",
-    "app/models/scan.py": "`Scan`, `BiomarkerReading`, `FISResult` ORM entities.",
-    "app/models/user.py": "Clinician/admin user entity.",
+    "app/models/scan.py": (
+        "`Scan` (with provenance and the research-only reference label), `BiomarkerReading`, "
+        "`FISResult` ORM entities."
+    ),
+    "app/models/study.py": "`ClinicianRating` ORM entity.",
+    "app/models/user.py": "Clinician / researcher / admin user entity.",
     "app/repositories/patient_repo.py": "Patient and scan persistence queries.",
+    "app/repositories/study_repo.py": "Queries for the rating study and the research export.",
     "app/repositories/user_repo.py": "User lookup and creation.",
     "app/schemas/auth.py": "Login/token request and response models. Uses `EmailStr`.",
     "app/schemas/base.py": "`CamelModel` - the camelCase JSON contract base.",
+    "app/schemas/biomarkers.py": "Request models for biomarkers measured outside this service.",
     "app/schemas/cohort.py": "Cohort summary response models.",
     "app/schemas/fis.py": "FIS result, fired rule, biomarker definition and curve models.",
     "app/schemas/patient.py": "Patient request/response models.",
     "app/schemas/scan.py": "Scan request/response models.",
+    "app/schemas/study.py": "Blinded study case and rating models.",
+    "app/services/audit.py": (
+        "Writes audit entries; refuses any detail value that is not a number or a code."
+    ),
+    "app/services/biomarker_derivation.py": (
+        "Pure derivations from parsed volumes to the three engine inputs, with units and "
+        "plausibility QC flags. `compute_vbr` lives here."
+    ),
     "app/services/biomarkers.py": (
-        "Fuzzy set definitions, `trapmf`, fuzzification, abnormality scoring. "
-        "**C2, C3, C7, C8 live here.**"
+        "`trapmf`, `BiomarkerDef`, the structural half of each biomarker. No numbers: those "
+        "are in `app/calibration/`. **C7 lives here.**"
     ),
+    "app/services/calibration.py": (
+        "Loads and validates calibration JSON; data-domain gating. **C3, C8 values are in "
+        "`app/calibration/phantom.v0.json`.**"
+    ),
+    "app/services/cohort_import.py": (
+        "Cohort import: CSV or stats folder plus demographics. Never defaults a missing CDR."
+    ),
+    "app/services/dicom_ingest.py": (
+        "DICOM zip: safe unpack, de-identification gate, conversion to NIfTI, deletion."
+    ),
+    "app/services/export_service.py": "Builds the research export rows and renders CSV.",
     "app/services/fis_engine.py": (
-        "Rule base and inference. **Not Mamdani/centroid - see C10. C4 and C5 live here.**"
+        "Rule base, inference, indeterminate results, centroid defuzzification. "
+        "**C5 lives here.**"
     ),
+    "app/services/freesurfer_stats.py": "Parser for FreeSurfer / FastSurfer aseg and aparc stats.",
     "app/services/pipeline.py": (
-        "Orchestrates preprocess -> volumetry -> inference, for file and synthetic inputs."
+        "Orchestrates measurement -> calibration -> inference for file, synthetic and "
+        "externally measured inputs."
     ),
     "app/services/preprocessing.py": "NIfTI load, bias correction, normalisation, brain masking.",
+    "app/services/rescore.py": (
+        "Re-runs the engine on stored biomarker readings after the calibration changes."
+    ),
     "app/services/scan_service.py": (
-        "Persists scan runs and their biomarker/FIS results; drives status transitions."
+        "Persists scan runs and their biomarker/FIS results; drives status transitions; keeps "
+        "phantom and real data on separate patients."
     ),
     "app/services/synthetic_mri.py": (
         "The phantom generator. Regression fixture - must not be removed."
     ),
+    "app/services/upload_validation.py": (
+        "Upload storage with size limit, file type by magic bytes, NIfTI sanitising."
+    ),
     "app/services/volumetry.py": (
-        "Tissue segmentation and biomarker extraction. **No ICV computed - see C2, C9.**"
+        "Phantom-tuned tissue segmentation and biomarker extraction. **C9 lives here.**"
+    ),
+    "app/services/volumetry_providers.py": (
+        "Volumetry providers (external, fastsurfer_docker, inhouse) and the FastSurfer "
+        "background job."
     ),
 }
 
