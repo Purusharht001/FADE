@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
+  AlertCircle,
   ArrowLeft,
   CalendarDays,
   CheckCircle2,
@@ -12,7 +13,12 @@ import {
 } from "lucide-react";
 import { usePatient, useReviewScan } from "@/api/patients";
 import { useBiomarkerDefs } from "@/api/fis";
-import { STAGE_BADGE_VARIANT, STAGE_LABEL, confidenceTone } from "@/lib/stage-style";
+import {
+  STAGE_BADGE_VARIANT,
+  STAGE_LABEL,
+  confidenceTone,
+  describeIndeterminate,
+} from "@/lib/stage-style";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -81,11 +87,13 @@ export function PatientDetail() {
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-lg font-semibold tracking-tight">{patient.displayId}</h2>
-              {result && (
+              {result?.stage ? (
                 <Badge variant={STAGE_BADGE_VARIANT[result.stage]}>
                   {STAGE_LABEL[result.stage]}
                 </Badge>
-              )}
+              ) : result ? (
+                <Badge variant="outline">Indeterminate</Badge>
+              ) : null}
               {result?.needsReview && (
                 <Badge variant="warning" className="gap-1">
                   <Sparkles className="size-3" /> Flagged
@@ -103,6 +111,12 @@ export function PatientDetail() {
                 <span className="flex items-center gap-1">
                   <CalendarDays className="size-3" /> {scan.scanDate}
                 </span>
+              )}
+              {scan?.externalSubjectId && (
+                <span className="font-mono">{scan.externalSubjectId}</span>
+              )}
+              {result?.calibrationVersion && (
+                <span>calibration {result.calibrationVersion}</span>
               )}
             </p>
           </div>
@@ -142,7 +156,8 @@ export function PatientDetail() {
                   : "border-border text-muted-foreground hover:bg-secondary"
               }`}
             >
-              {s.scanDate} {s.fisResult ? `· ${s.fisResult.stage}` : `· ${s.status}`}
+              {s.scanDate}{" "}
+              {s.fisResult ? `· ${s.fisResult.stage ?? "indeterminate"}` : `· ${s.status}`}
             </button>
           ))}
         </div>
@@ -172,20 +187,50 @@ export function PatientDetail() {
                     <CardTitle>Staging output</CardTitle>
                     <CardDescription>Defuzzified result and confidence</CardDescription>
                   </CardHeader>
-                  <CardContent className="flex flex-col items-center gap-5">
-                    <ConfidenceRing
-                      value={result.confidence}
-                      tone={confidenceTone(result.confidence)}
-                      label="confidence"
-                    />
-                    <div className="w-full border-t border-border pt-4">
-                      <div className="mb-2 flex items-center justify-between text-xs">
-                        <span className="text-muted-foreground">Uncertainty score</span>
-                        <span className="font-medium tabular-nums">{result.uncertainty}%</span>
+                  {result.determinate ? (
+                    <CardContent className="flex flex-col items-center gap-5">
+                      <ConfidenceRing
+                        value={result.confidence}
+                        tone={confidenceTone(result.confidence)}
+                        label="confidence"
+                      />
+                      <div className="w-full border-t border-border pt-4">
+                        <div className="mb-2 flex items-center justify-between text-xs">
+                          <span className="text-muted-foreground">Uncertainty score</span>
+                          <span className="font-medium tabular-nums">{result.uncertainty}%</span>
+                        </div>
+                        {result.severity != null && (
+                          <div className="mb-3 flex items-center justify-between text-xs">
+                            <span className="text-muted-foreground">
+                              Severity index (0 = CN, 1 = AD; provisional)
+                            </span>
+                            <span className="font-medium tabular-nums">
+                              {result.severity.toFixed(2)}
+                            </span>
+                          </div>
+                        )}
+                        <MembershipBars membership={result.membership} />
                       </div>
-                      <MembershipBars membership={result.membership} />
-                    </div>
-                  </CardContent>
+                    </CardContent>
+                  ) : (
+                    <CardContent className="space-y-3">
+                      <div className="flex items-start gap-2.5 rounded-lg border border-status-warning/40 bg-status-warning/10 p-3">
+                        <AlertCircle className="mt-0.5 size-4 shrink-0 text-status-warning" />
+                        <div>
+                          <p className="text-sm font-medium">Not staged</p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            The engine declined to give a stage for this scan, so it is flagged
+                            for clinician review.
+                          </p>
+                        </div>
+                      </div>
+                      <ul className="list-disc space-y-1 pl-5 text-xs text-muted-foreground">
+                        {describeIndeterminate(result.indeterminateReason).map((line) => (
+                          <li key={line}>{line}</li>
+                        ))}
+                      </ul>
+                    </CardContent>
+                  )}
                 </Card>
 
                 <div className="lg:col-span-2">
@@ -213,7 +258,7 @@ export function PatientDetail() {
                 })}
               </div>
 
-              <RuleList rules={result.firedRules} />
+              {result.firedRules.length > 0 && <RuleList rules={result.firedRules} />}
             </>
           )}
         </>

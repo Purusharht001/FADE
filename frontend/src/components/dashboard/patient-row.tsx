@@ -51,15 +51,17 @@ export function PatientRow({ patient, index }: { patient: PatientListItem; index
         <div className="hidden sm:block">
           {scan?.stage ? (
             <Badge variant={STAGE_BADGE_VARIANT[scan.stage]}>{scan.stage}</Badge>
+          ) : scan?.status === "completed" ? (
+            <Badge variant="outline">Indeterminate</Badge>
           ) : (
-            <Badge variant="outline">No scan</Badge>
+            <Badge variant="outline">{scan ? "Pending" : "No scan"}</Badge>
           )}
         </div>
 
         <div className="hidden text-xs text-muted-foreground sm:block">{scan?.scanDate ?? "—"}</div>
 
         <div className="hidden items-center gap-2 sm:flex">
-          {scan?.confidence != null ? (
+          {scan?.confidence != null && scan.stage ? (
             <>
               <Progress
                 value={scan.confidence}
@@ -72,7 +74,13 @@ export function PatientRow({ patient, index }: { patient: PatientListItem; index
             </>
           ) : (
             <span className="text-xs text-muted-foreground">
-              {scan?.status === "failed" ? "Processing failed" : scan ? "Processing…" : "—"}
+              {scan?.status === "failed"
+                ? "Processing failed"
+                : scan?.status === "completed"
+                  ? "Not staged"
+                  : scan
+                    ? "Processing…"
+                    : "—"}
             </span>
           )}
         </div>
@@ -86,7 +94,9 @@ export function PatientRow({ patient, index }: { patient: PatientListItem; index
                 </span>
               </TooltipTrigger>
               <TooltipContent>
-                High uncertainty ({scan.uncertainty}%) — flagged for clinician review
+                {scan.stage
+                  ? `High uncertainty (${scan.uncertainty}%) — flagged for clinician review`
+                  : "Not staged by the engine — needs clinician review"}
               </TooltipContent>
             </Tooltip>
           ) : scan?.status === "failed" ? (

@@ -26,6 +26,7 @@ export function StageDistributionChart({ stats }: { stats: CohortStats }) {
         <CardTitle>Cohort by stage</CardTitle>
         <CardDescription>
           Current staging output across all {stats.totalPatients} patients
+          {stats.indeterminate ? ` · ${stats.indeterminate} not staged (indeterminate)` : ""}
         </CardDescription>
       </CardHeader>
       <div className="h-40 px-2 pb-4">

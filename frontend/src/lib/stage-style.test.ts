@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   abnormalityLabel,
   confidenceTone,
+  describeIndeterminate,
   STAGE_BADGE_VARIANT,
   STAGE_LABEL,
 } from "@/lib/stage-style";
@@ -49,5 +50,24 @@ describe("abnormalityLabel", () => {
     expect(abnormalityLabel(0.64)).toBe("borderline");
     expect(abnormalityLabel(0.65)).toBe("abnormal");
     expect(abnormalityLabel(1)).toBe("abnormal");
+  });
+});
+
+describe("describeIndeterminate", () => {
+  it("explains each reason code, with its detail", () => {
+    expect(
+      describeIndeterminate("missing_biomarker:cortical_thickness; calibration_not_validated_for_real_data")
+    ).toEqual([
+      "A biomarker could not be measured: cortical thickness.",
+      "The active calibration was fitted to the synthetic phantom, not to real scans.",
+    ]);
+  });
+
+  it("falls back to the raw code for one it does not know", () => {
+    expect(describeIndeterminate("something_new")).toEqual(["something_new"]);
+  });
+
+  it("has a generic line when no reason was given", () => {
+    expect(describeIndeterminate(null)).toHaveLength(1);
   });
 });
