@@ -1,4 +1,12 @@
+import os
 from collections.abc import AsyncGenerator
+
+# The suite's expected values are written against the phantom calibration.
+# Pin it before the app reads settings, so a developer's backend/.env that
+# selects a real calibration (CALIBRATION_FILE=real.v1.json) does not turn
+# into dozens of spurious failures. Tests about other calibrations load
+# their files explicitly.
+os.environ["CALIBRATION_FILE"] = "phantom.v0.json"
 
 import pytest
 import pytest_asyncio
