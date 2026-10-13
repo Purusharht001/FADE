@@ -6,7 +6,7 @@
 |---|---|
 | Aryaditya Deshmukh | 23BCE5056 |
 | Purusharth Kumar | 23BCE1908 |
-| Punya Sirohi | 23BCE1917 |
+| Punya K Sirohi | 23BCE1917 |
 
 ---
 
