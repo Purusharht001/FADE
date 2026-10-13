@@ -132,10 +132,11 @@ The folder name is the subject id. FastSurfer file names (`aseg+DKT.stats`,
 
 ### Before the first import: settle the VBR formula
 
-The import computes and stores VBR. The formula is the team's best reading of the earlier parser
-and is not yet confirmed (section D, "Good to know", has the one-command check against
-OAS1_0001_MR1). Run that check first. A scan imported before a formula fix keeps the old value,
-and there is no command yet that re-derives stored values from raw volumes.
+Settled on 2026-10-13: VBR is (left + right lateral + left + right inferior lateral ventricles) /
+BrainSegVol, which gives 0.05755 for OAS1_0001_MR1. The earlier parser's 0.04143 summed a
+different set of ventricles over ICV and is not used. Section D, "Good to know", has the
+one-command check. Import only after any future formula change is settled: a scan imported
+earlier keeps its old value, and there is no command yet that re-derives stored values.
 
 ### Steps
 
@@ -545,15 +546,15 @@ biomarkers have `abnormality: null`.
   calibration change. Bump `ENGINE_VERSION` there when you do, so results can be traced.
 - `compute_vbr` in `app/services/biomarker_derivation.py` is the single definition of VBR:
   (left + right lateral ventricles + left + right inferior lateral ventricles) / BrainSegVol. It
-  must reproduce 0.04143 for OAS1_0001_MR1. To check, put that subject's `aseg.stats` at
+  gives 0.05755 for OAS1_0001_MR1 (the earlier parser's 0.04143 used another numerator and ICV as
+  denominator, and was dropped on 2026-10-13). To check, put that subject's `aseg.stats` at
   `tests\fixtures\private\OAS1_0001_MR1\aseg.stats` (the folder is git-ignored) and run:
 
   ```powershell
   uv run pytest tests/test_biomarker_derivation.py -k oas1_0001 -v
   ```
 
-  The test is skipped until that file is present. If it fails, the earlier parser used a
-  different denominator or set of ventricles: fix `compute_vbr`. Scans already imported keep the
+  The test is skipped until that file is present. Scans already imported keep the
   VBR computed with the old formula. Nothing re-derives stored values yet, so those rows would
   have to be removed from the database and imported again, which is why this check comes before
   the first import.
@@ -626,5 +627,5 @@ These parts are covered by automated tests using stand-ins, and have not been ru
 | `dcm2niix` conversion | Not installed here. The command line is tested with a fake; the built-in converter is tested on synthetic DICOM. | Install `dcm2niix` on the server and upload one real anonymised series. |
 | Real DICOM from the clinic's scanner | Only synthetic single-frame series were available. | If a series is refused as unconvertible, convert it to NIfTI with `dcm2niix` and upload that. |
 | Migrations on PostgreSQL | Run here on SQLite only. The generated PostgreSQL statements were inspected by hand. | The CI job applies them to PostgreSQL; check that it passes. |
-| VBR against the team's value 0.04143 | The OAS1_0001_MR1 stats file was not available. | Section D, "Good to know". |
+| VBR on real stats | Checked by hand on 2026-10-13 against OAS1_0001_MR1 (0.05755). | Run the section D test once to confirm it in CI terms. |
 | Real FreeSurfer stats files | The parser is tested on hand-written files in FreeSurfer's format. | Dry-run the cohort import and read the `skipped-invalid` reasons. |

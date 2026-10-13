@@ -80,10 +80,10 @@ class TestFormulas:
             "tests/fixtures/private/OAS1_0001_MR1/aseg.stats or set FADE_OAS1_0001_ASEG."
         ),
     )
-    def test_vbr_reproduces_the_team_value_for_oas1_0001_mr1(self):
-        """TODO(confirm): compute_vbr must reproduce 0.04143 for this
-        subject. If it does not, the earlier parser used a different
-        denominator or a different set of ventricles; fix compute_vbr.
+    def test_vbr_for_oas1_0001_mr1(self):
+        """(27330 + 22792 + 1487 + 1419) / 921495 = 0.057546 for this
+        subject. The earlier parser's 0.04143 used a different numerator
+        and ICV as denominator; see compute_vbr.
         """
         aseg = parse_aseg_stats(OAS1_0001_ASEG.read_text(encoding="utf-8", errors="replace"))
         vbr = compute_vbr(
@@ -93,7 +93,7 @@ class TestFormulas:
             aseg.right_inf_lat_vent_mm3,
             aseg.brain_seg_vol_mm3,
         )
-        assert vbr == pytest.approx(0.04143, abs=5e-6)
+        assert vbr == pytest.approx(0.057546, abs=5e-6)
 
 
 class TestCorticalThickness:
