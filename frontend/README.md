@@ -17,8 +17,8 @@ codebase.
   clinical normal ranges, and a rule-explainability panel showing exactly which fuzzy rules fired and
   why.
 - **New Case / Run Scan flows** — create a patient and either upload a real `.nii`/`.nii.gz` file or
-  generate a synthetic demo scan (there's no real imaging dataset wired up yet — see the root README's
-  Phase 1 status), with **explicit handling of a failed scan**: a 422 `UnprocessableScanError` from the
+  generate a synthetic demo scan (recorded as PHANTOM; real OASIS-1 cases come in through the cohort
+  import in `docs/REAL_DATA_RUNBOOK.md`), with **explicit handling of a failed scan**: a 422 `UnprocessableScanError` from the
   backend surfaces inline in the dialog (stays open for retry) when re-running a scan, or as a toast +
   navigate-to-record when it happens during initial case creation, so the clinician always ends up
   somewhere useful instead of a dead end.

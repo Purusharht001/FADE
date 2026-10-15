@@ -119,12 +119,14 @@ def compute_vbr(
     """Ventricle-to-brain ratio: lateral plus inferior lateral ventricles,
     both sides, over BrainSegVol. Unit: unitless ratio (0.04, not 4%).
 
-    TODO(confirm): the team's earlier parser may have used a different
-    denominator (BrainSegVolNotVent, eTIV or a supratentorial volume) or
-    left out the inferior lateral ventricles. This definition must
-    reproduce 0.04143 for OAS1_0001_MR1; tests/test_biomarker_derivation.py
-    has a placeholder test that checks it once that subject's aseg.stats is
-    available. Change the formula here and nowhere else.
+    Settled 2026-10-13. The team's earlier value for OAS1_0001_MR1,
+    0.04143, came from a script that summed every structure named
+    "*Ventricle*" (lateral, 3rd, 4th and 5th, but not the inferior
+    lateral ventricles) and divided by ICV. That is neither the lateral
+    ventricular system nor a brain-volume denominator, so it was not kept.
+    This definition gives 0.05755 for OAS1_0001_MR1, which
+    tests/test_biomarker_derivation.py checks once that subject's
+    aseg.stats is available. Change the formula here and nowhere else.
     """
     ventricles = (
         left_lateral_ventricle_mm3

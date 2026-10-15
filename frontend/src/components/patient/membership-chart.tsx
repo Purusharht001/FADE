@@ -10,6 +10,7 @@ import {
 } from "recharts";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import type { BiomarkerDef, FuzzyLabel } from "@/types/api";
+import { formatMeasure } from "@/lib/format";
 
 const LABEL_COLOR: Record<FuzzyLabel, string> = {
   low: "var(--color-status-critical)",
@@ -46,7 +47,7 @@ export function BiomarkerMembershipChart({ def, value }: { def: BiomarkerDef; va
         <CardTitle>{def.shortLabel} membership</CardTitle>
         <CardDescription>
           Fuzzy sets over {def.label.toLowerCase()} — dashed line marks this reading (
-          {value.toFixed(2)} {def.unit})
+          {formatMeasure(value)} {def.unit})
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -78,7 +79,7 @@ export function BiomarkerMembershipChart({ def, value }: { def: BiomarkerDef; va
                   borderRadius: 8,
                   fontSize: 12,
                 }}
-                labelFormatter={(v) => `${def.shortLabel}: ${Number(v).toFixed(2)} ${def.unit}`}
+                labelFormatter={(v) => `${def.shortLabel}: ${formatMeasure(Number(v))} ${def.unit}`}
                 formatter={(val, name) => [Number(val).toFixed(2), LABEL_TEXT[name as FuzzyLabel]]}
               />
               <ReferenceLine

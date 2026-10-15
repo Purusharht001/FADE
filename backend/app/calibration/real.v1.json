@@ -1,0 +1,129 @@
+{
+  "schema_version": 1,
+  "version": "real.v1",
+  "domain": "real",
+  "provisional": true,
+  "notes": "Fitted 2026-10-13 by fit_real_calibration.py from OASIS-1 FreeSurfer stats: 25 labelled subjects, breakpoints from the 13 CDR-0 subjects (mean age 66). Percentile scheme: lower-is-worse sets at CN p05/p20/p35/p50, VBR at p50/p65/p85/p95. Limitation: the CN reference spans the adult lifespan, so it is younger than the patients it is applied to; age-stratified norms need a larger cohort.",
+  "biomarkers": {
+    "hippocampal_volume": {
+      "unit": "‰ICV",
+      "description": "Bilateral hippocampal volume divided by intracranial volume, in per-mille of ICV. Atrophy here is one of the earliest structural markers of AD-related neurodegeneration.",
+      "normal_range": [
+        3.628,
+        6.426
+      ],
+      "display_range": [
+        2.86,
+        7.356
+      ],
+      "sets": {
+        "low": [
+          1.361253,
+          1.361253,
+          3.62819,
+          4.361183
+        ],
+        "borderline": [
+          3.62819,
+          4.361183,
+          5.104076,
+          5.177985
+        ],
+        "normal": [
+          5.104076,
+          5.177985,
+          8.854236,
+          8.854236
+        ]
+      }
+    },
+    "ventricle_brain_ratio": {
+      "unit": "ratio",
+      "description": "Lateral plus inferior lateral ventricle volume divided by brain segmentation volume, as a unitless ratio. Enlargement is a proxy for global tissue loss (ex-vacuo dilation).",
+      "normal_range": [
+        0.008334,
+        0.07018
+      ],
+      "display_range": [
+        0.0,
+        0.14
+      ],
+      "sets": {
+        "normal": [
+          0.0,
+          0.0,
+          0.027185,
+          0.0477
+        ],
+        "borderline": [
+          0.027185,
+          0.0477,
+          0.058576,
+          0.070184
+        ],
+        "high": [
+          0.058576,
+          0.070184,
+          0.187846,
+          0.187846
+        ]
+      }
+    },
+    "cortical_thickness": {
+      "unit": "mm",
+      "description": "Mean FreeSurfer cortical thickness over the configured AD-signature regions, both hemispheres, in millimetres. Thinning tracks cumulative neuronal loss.",
+      "normal_range": [
+        2.245,
+        2.656
+      ],
+      "display_range": [
+        1.82,
+        2.749
+      ],
+      "sets": {
+        "low": [
+          1.5101,
+          1.5101,
+          2.24522,
+          2.292
+        ],
+        "borderline": [
+          2.24522,
+          2.292,
+          2.31134,
+          2.3648
+        ],
+        "normal": [
+          2.31134,
+          2.3648,
+          3.0589,
+          3.0589
+        ]
+      }
+    }
+  },
+  "output_sets": {
+    "provisional": true,
+    "todo": "TODO(clinical: C10) placeholder triangles carried over from phantom.v0 so that `severity` is reported. Replace with sets agreed with the neurologist.",
+    "sets": {
+      "CN": [
+        0.0,
+        0.0,
+        0.0,
+        0.5
+      ],
+      "MCI": [
+        0.0,
+        0.5,
+        0.5,
+        1.0
+      ],
+      "AD": [
+        0.5,
+        1.0,
+        1.0,
+        1.0
+      ]
+    }
+  }
+}

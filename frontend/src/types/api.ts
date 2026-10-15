@@ -16,7 +16,14 @@ export type FuzzyLabel = "low" | "borderline" | "normal" | "high";
 
 export type Sex = "F" | "M";
 
-export type DataSource = "OASIS" | "ADNI" | "Clinic";
+export type DataSource = "OASIS" | "ADNI" | "Clinic" | "PHANTOM";
+
+/** How a scan's biomarkers were measured (backend ExtractionMethod). */
+export type ExtractionMethod =
+  | "inhouse_phantom"
+  | "freesurfer_stats"
+  | "fastsurfer"
+  | "manual_biomarkers";
 
 export type UserRole = "clinician" | "admin";
 
@@ -25,6 +32,8 @@ export type ScanStatus =
   | "preprocessing"
   | "extracting_biomarkers"
   | "running_inference"
+  | "awaiting_volumetry"
+  | "segmenting"
   | "completed"
   | "failed";
 
@@ -61,7 +70,8 @@ export interface BiomarkerReading {
   key: BiomarkerKey;
   value: number;
   unit: string;
-  abnormality: number;
+  /** null when the result is indeterminate: no calibrated reading exists. */
+  abnormality: number | null;
 }
 
 export interface FiredRule {
@@ -72,13 +82,20 @@ export interface FiredRule {
 }
 
 export interface FISResult {
-  stage: Stage;
+  /** null when `determinate` is false: the engine declined to stage the case. */
+  stage: Stage | null;
   confidence: number;
   uncertainty: number;
   needsReview: boolean;
   reviewed: boolean;
   membership: Record<Stage, number>;
   firedRules: FiredRule[];
+  determinate: boolean;
+  /** Reason codes joined by "; ", e.g. "missing_biomarker:cortical_thickness". */
+  indeterminateReason: string | null;
+  /** 0-1 centroid on the severity axis; null when not computed. Provisional (C10). */
+  severity: number | null;
+  calibrationVersion: string;
 }
 
 export interface CurvePoint {
@@ -121,6 +138,11 @@ export interface ScanRead {
   failureReason: string | null;
   biomarkers: BiomarkerReading[];
   fisResult: FISResult | null;
+  extractionMethod: ExtractionMethod | null;
+  externalSubjectId: string | null;
+  qcFlags: { kind?: string; code?: string; message?: string }[];
+  calibrationVersion: string | null;
+  engineVersion: string | null;
 }
 
 export interface ScanSummary {
@@ -131,6 +153,10 @@ export interface ScanSummary {
   confidence: number | null;
   uncertainty: number | null;
   needsReview: boolean | null;
+  extractionMethod?: ExtractionMethod | null;
+  determinate?: boolean | null;
+  indeterminateReason?: string | null;
+  severity?: number | null;
 }
 
 export interface SyntheticScanRequest {
@@ -177,6 +203,8 @@ export interface CohortStats {
   needsReview: number;
   avgConfidence: number;
   byStage: Record<Stage, number>;
+  /** Results the engine declined to stage; not counted in byStage. */
+  indeterminate?: number;
 }
 
 // --- Errors ---

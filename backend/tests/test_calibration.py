@@ -195,6 +195,31 @@ class TestRealTemplate:
         assert calibration.units == {HV: "‰ICV", VBR: "ratio", CT: "mm"}
 
 
+class TestRealV1:
+    """real.v1.json: fitted to the OASIS-1 FreeSurfer cohort by
+    fit_real_calibration.py (outside this repo). These pin that it loads,
+    is complete, and keeps the units the derivation code produces.
+    """
+
+    def test_loads_complete_and_real(self):
+        calibration = load_calibration(CALIBRATION_DIR / "real.v1.json")
+        assert calibration.version == "real.v1"
+        assert calibration.domain == DataDomain.REAL
+        assert calibration.complete is True
+        assert calibration.missing == ()
+        assert calibration.output_sets is not None
+
+    def test_declares_the_same_units_as_the_template(self):
+        real = load_calibration(CALIBRATION_DIR / "real.v1.json")
+        template = load_calibration(CALIBRATION_DIR / "real.template.json")
+        assert real.units == template.units
+
+    def test_output_sets_are_still_the_provisional_placeholders(self):
+        # TODO(clinical: C10): replace once the neurologist agrees the sets.
+        calibration = load_calibration(CALIBRATION_DIR / "real.v1.json")
+        assert calibration.output_sets_provisional is True
+
+
 class TestLoaderValidation:
     def test_missing_file(self, tmp_path):
         with pytest.raises(CalibrationError, match="not found"):

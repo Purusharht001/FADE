@@ -185,8 +185,8 @@ export function NewCaseDialog({ open, onOpenChange }: NewCaseDialogProps) {
                 className="w-full accent-primary"
               />
               <p className="text-xs text-muted-foreground">
-                Generates a synthetic MRI phantom and runs it through the real pipeline — there's no
-                real imaging dataset wired up yet (see the project README).
+                Generates a synthetic MRI phantom for demonstration. The case is recorded as PHANTOM,
+                and while a real-data calibration is active it is not staged.
               </p>
             </TabsContent>
 
