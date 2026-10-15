@@ -626,6 +626,6 @@ These parts are covered by automated tests using stand-ins, and have not been ru
 | Whether FastSurfer `--seg_only` writes eTIV, and whether it needs the licence | Could not be checked without a real run. | See the note under provider 2. |
 | `dcm2niix` conversion | Not installed here. The command line is tested with a fake; the built-in converter is tested on synthetic DICOM. | Install `dcm2niix` on the server and upload one real anonymised series. |
 | Real DICOM from the clinic's scanner | Only synthetic single-frame series were available. | If a series is refused as unconvertible, convert it to NIfTI with `dcm2niix` and upload that. |
-| Migrations on PostgreSQL | Run here on SQLite only. The generated PostgreSQL statements were inspected by hand. | The CI job applies them to PostgreSQL; check that it passes. |
+| Migrations on PostgreSQL | Run here on SQLite only. The generated PostgreSQL statements were inspected by hand. | Run `uv run alembic upgrade head` once against the PostgreSQL database before first use. |
 | VBR on real stats | Checked by hand on 2026-10-13 against OAS1_0001_MR1 (0.05755). | Run the section D test once to confirm it in CI terms. |
 | Real FreeSurfer stats files | The parser is tested on hand-written files in FreeSurfer's format. | Dry-run the cohort import and read the `skipped-invalid` reasons. |

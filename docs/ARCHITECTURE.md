@@ -47,7 +47,7 @@ table above is kept as recorded.
 | Type check (py) | `uv run mypy app` | **clean**, 62 source files |
 | Lint | `uv run ruff check app tests scripts` | **clean** |
 | Migrations | `alembic upgrade head` on empty SQLite | **succeeds**, four revisions, head `ef8721d5b1d9` |
-| Migrations on PostgreSQL | CI job | not run locally; the generated SQL was inspected |
+| Migrations on PostgreSQL | not run | the generated SQL was inspected |
 
 The frontend was not changed and its checks were not re-run.
 

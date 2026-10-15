@@ -122,7 +122,6 @@ plan around his availability, not just team bandwidth.
 pjt1/
 ├── backend/                # ✅ built - FastAPI + fuzzy inference engine + MRI pipeline, see backend/README.md
 ├── frontend/               # ✅ built - decision-support dashboard, wired to the live API, see frontend/README.md
-├── .github/workflows/      # CI - lint/typecheck/test on every PR, see ci.yml
 ├── docker-compose.yml      # full stack: Postgres + FastAPI + React (nginx) - see §12 below
 ├── docs/                   # architecture, real-data runbook, baseline gate, OASIS-1 benchmark
 │   ├── ARCHITECTURE.md       # file reference + register of unsourced clinical assumptions (C1-C10)
@@ -230,19 +229,7 @@ patient data in demo mode.
 **Real data** (the OASIS cohort, clinic scans) is handled through the API and command-line tools
 described in [`docs/REAL_DATA_RUNBOOK.md`](docs/REAL_DATA_RUNBOOK.md), run locally from `backend/`.
 
-## 13. Continuous Integration
-
-[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every pull request:
-
-- **Backend:** `ruff check`, `mypy`, `pytest` (isolated in-memory SQLite, per the backend's own test
-  design), plus a separate `alembic upgrade head` smoke test against a real ephemeral Postgres service
-  container - migrations can behave differently there than on SQLite, so this is checked independently
-  of the pytest run rather than assumed.
-- **Frontend:** `tsc --noEmit`, `oxlint`, `vitest run`.
-
-Either half failing blocks the merge.
-
-## 14. References
+## 13. References
 
 Reviewed to establish feasibility, methodology, and novelty:
 
@@ -265,7 +252,7 @@ Reviewed to establish feasibility, methodology, and novelty:
    Quantification Based on the Hybrid Fuzzy-Genetic-Possibilistic Model and Discriminative
    Classification Based on the SVDD Model.* PMC. https://www.ncbi.nlm.nih.gov/pmc/articles/PMC6826987/
 
-## 15. Note on Data Ethics
+## 14. Note on Data Ethics
 
 This project involves real, identifiable patient MRI data prior to anonymization. Do not commit any
 patient data, DICOM headers, or clinic records to this repository at any point - `data/` should stay

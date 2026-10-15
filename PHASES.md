@@ -328,4 +328,4 @@ rule base and membership functions.
   segment with Dr. Deshmukh's clinical perspective on the tool's value.
 
 **Deliverables:** Final report, presentation deck/demo, cleaned-up public-facing repository (with all
-patient data excluded per §13 of the README).
+patient data excluded per §14 of the README).

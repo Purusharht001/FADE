@@ -236,9 +236,7 @@ make lint        # ruff
 make typecheck   # mypy
 ```
 
-782 tests. The suite runs against an isolated in-memory SQLite database per test. CI also runs
-`alembic upgrade head` against a real PostgreSQL container, since migrations can behave
-differently there.
+The suite runs against an isolated in-memory SQLite database per test.
 
 What is covered, beyond the happy path:
 
