@@ -7,6 +7,7 @@ from collections.abc import AsyncGenerator
 # into dozens of spurious failures. Tests about other calibrations load
 # their files explicitly.
 os.environ["CALIBRATION_FILE"] = "phantom.v0.json"
+os.environ["VOLUMETRY_PROVIDER"] = "external"
 
 import pytest
 import pytest_asyncio

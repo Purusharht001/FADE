@@ -1,5 +1,4 @@
 """Per-client rate limiting.
-
 Two limits, both counted per client address:
 
 * `RATE_LIMIT_DEFAULT` applies to every request, through

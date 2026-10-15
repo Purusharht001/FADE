@@ -28,7 +28,7 @@ class Settings(BaseSettings):
 
     # --- App metadata ---
     app_name: str = "FADE API"
-    app_version: str = "0.1.0"
+    app_version: str = "0.2.0"
     environment: Literal["development", "test", "production"] = "development"
     debug: bool = True
     api_v1_prefix: str = "/api/v1"

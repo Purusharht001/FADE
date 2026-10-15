@@ -1,6 +1,6 @@
 [project]
 name = "fade-backend"
-version = "0.1.0"
+version = "0.2.0"
 description = "FADE — Fuzzy-Assisted Diagnostic Evaluator for Dementia Staging. Backend API: MRI preprocessing/volumetry pipeline, Mamdani fuzzy inference engine, and clinician-facing REST API."
 readme = "README.md"
 requires-python = ">=3.12"

@@ -6,7 +6,7 @@ const STATUS_LABEL: Record<ScanRead["status"], string> = {
   preprocessing: "Preprocessing MRI (skull-strip, bias correction, normalization)…",
   extracting_biomarkers: "Segmenting tissue and extracting biomarkers…",
   running_inference: "Running fuzzy inference…",
-  awaiting_volumetry: "Waiting for FreeSurfer stats to be uploaded…",
+  awaiting_volumetry: "Waiting for FreeSurfer / FastSurfer stats to be uploaded…",
   segmenting: "Segmenting with FastSurfer…",
   completed: "Completed",
   failed: "Failed",
