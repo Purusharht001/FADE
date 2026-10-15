@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { Loader2, UploadCloud } from "lucide-react";
+import { Loader2, UploadCloud, Sparkles } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -13,11 +13,13 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { createPatient, createSyntheticScan, uploadScan } from "@/api/patients";
+import { createPatient, createSyntheticScan, uploadScan, createBiomarkersScan } from "@/api/patients";
+import { simulateFIS } from "@/api/fis";
 import { ApiError } from "@/api/client";
 import { toast } from "@/store/toast";
-import type { DataSource, Sex } from "@/types/api";
+import type { DataSource, Sex, FISResult } from "@/types/api";
 
 interface NewCaseDialogProps {
   open: boolean;
@@ -31,17 +33,52 @@ export function NewCaseDialog({ open, onOpenChange }: NewCaseDialogProps) {
   const [age, setAge] = useState("70");
   const [sex, setSex] = useState<Sex>("F");
   const [source, setSource] = useState<DataSource>("Clinic");
-  const [method, setMethod] = useState<"synthetic" | "upload">("synthetic");
+  const [method, setMethod] = useState<"biomarkers" | "synthetic" | "upload">("biomarkers");
+
+  // Biomarkers state
+  const [hippocampus, setHippocampus] = useState("4.10");
+  const [vbr, setVbr] = useState("0.045");
+  const [thickness, setThickness] = useState("2.65");
+  const [simResult, setSimResult] = useState<FISResult | null>(null);
+
   const [severity, setSeverity] = useState(0.5);
   const [file, setFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Live fuzzy preview effect when in biomarkers mode
+  useEffect(() => {
+    if (method !== "biomarkers") return;
+    const h = Number(hippocampus);
+    const v = Number(vbr);
+    const t = Number(thickness);
+    if (isNaN(h) || isNaN(v) || isNaN(t) || h <= 0 || v < 0 || t <= 0) return;
+
+    let ignore = false;
+    simulateFIS({
+      hippocampalVolume: h,
+      ventricleBrainRatio: v,
+      corticalThickness: t,
+    })
+      .then((res) => {
+        if (!ignore) setSimResult(res);
+      })
+      .catch(() => {});
+
+    return () => {
+      ignore = true;
+    };
+  }, [method, hippocampus, vbr, thickness]);
+
   function reset() {
     setAge("70");
     setSex("F");
     setSource("Clinic");
-    setMethod("synthetic");
+    setMethod("biomarkers");
+    setHippocampus("4.10");
+    setVbr("0.045");
+    setThickness("2.65");
+    setSimResult(null);
     setSeverity(0.5);
     setFile(null);
     setError(null);
@@ -60,15 +97,20 @@ export function NewCaseDialog({ open, onOpenChange }: NewCaseDialogProps) {
       const patient = await createPatient({ age: Number(age), sex, source });
 
       try {
-        if (method === "synthetic") {
+        if (method === "biomarkers") {
+          await createBiomarkersScan(patient.id, {
+            derived: {
+              hippocampalVolume: { value: Number(hippocampus), unit: "‰ICV" },
+              ventricleBrainRatio: { value: Number(vbr), unit: "ratio" },
+              corticalThickness: { value: Number(thickness), unit: "mm" },
+            },
+          });
+        } else if (method === "synthetic") {
           await createSyntheticScan(patient.id, { severity });
         } else {
           await uploadScan(patient.id, file!);
         }
       } catch (scanErr) {
-        // The patient record was created successfully even though the scan
-        // failed — surface that clearly rather than implying nothing happened,
-        // and send the clinician to the record so they can retry the scan.
         queryClient.invalidateQueries({ queryKey: ["patients"] });
         queryClient.invalidateQueries({ queryKey: ["cohort"] });
         const message =
@@ -88,7 +130,7 @@ export function NewCaseDialog({ open, onOpenChange }: NewCaseDialogProps) {
 
       queryClient.invalidateQueries({ queryKey: ["patients"] });
       queryClient.invalidateQueries({ queryKey: ["cohort"] });
-      toast({ variant: "success", title: "Case created", description: patient.displayId });
+      toast({ variant: "success", title: "Case created and staged", description: patient.displayId });
       onOpenChange(false);
       reset();
       navigate(`/patient/${patient.id}`);
@@ -109,12 +151,11 @@ export function NewCaseDialog({ open, onOpenChange }: NewCaseDialogProps) {
         }
       }}
     >
-      <DialogContent>
+      <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
           <DialogTitle>New case</DialogTitle>
           <DialogDescription>
-            Creates a patient record and runs a scan through the real preprocessing → volumetry →
-            fuzzy inference pipeline.
+            Create a patient case and evaluate dementia staging via the Fuzzy Inference System.
           </DialogDescription>
         </DialogHeader>
 
@@ -159,20 +200,114 @@ export function NewCaseDialog({ open, onOpenChange }: NewCaseDialogProps) {
             </div>
           </div>
 
-          <Tabs value={method} onValueChange={(v) => setMethod(v as "synthetic" | "upload")}>
-            <TabsList className="w-full">
-              <TabsTrigger value="synthetic" className="flex-1">
-                Synthetic demo scan
+          <Tabs
+            value={method}
+            onValueChange={(v) => setMethod(v as "biomarkers" | "synthetic" | "upload")}
+          >
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="biomarkers">
+                Biomarkers
               </TabsTrigger>
-              <TabsTrigger value="upload" className="flex-1">
+              <TabsTrigger value="synthetic">
+                Synthetic Demo
+              </TabsTrigger>
+              <TabsTrigger value="upload">
                 Upload MRI
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="synthetic" className="space-y-2">
+            <TabsContent value="biomarkers" className="space-y-3 pt-1">
+              <div className="grid grid-cols-3 gap-2.5">
+                <div className="flex flex-col gap-1">
+                  <Label htmlFor="hippo" className="text-xs">
+                    Hippocampus <span className="text-[10px] text-muted-foreground">(‰ICV)</span>
+                  </Label>
+                  <Input
+                    id="hippo"
+                    type="number"
+                    step="0.01"
+                    min="0.1"
+                    max="15"
+                    value={hippocampus}
+                    onChange={(e) => setHippocampus(e.target.value)}
+                    required
+                  />
+                  <span className="text-[10px] text-muted-foreground">Normal: 3.6 – 6.4</span>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Label htmlFor="vbr" className="text-xs">
+                    VBR <span className="text-[10px] text-muted-foreground">(ratio)</span>
+                  </Label>
+                  <Input
+                    id="vbr"
+                    type="number"
+                    step="0.001"
+                    min="0.001"
+                    max="1"
+                    value={vbr}
+                    onChange={(e) => setVbr(e.target.value)}
+                    required
+                  />
+                  <span className="text-[10px] text-muted-foreground">Normal: &lt; 0.048</span>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Label htmlFor="thickness" className="text-xs">
+                    Thickness <span className="text-[10px] text-muted-foreground">(mm)</span>
+                  </Label>
+                  <Input
+                    id="thickness"
+                    type="number"
+                    step="0.01"
+                    min="0.5"
+                    max="10"
+                    value={thickness}
+                    onChange={(e) => setThickness(e.target.value)}
+                    required
+                  />
+                  <span className="text-[10px] text-muted-foreground">Normal: 2.7 – 3.2</span>
+                </div>
+              </div>
+
+              {simResult && simResult.severity !== null && (
+                <div className="rounded-lg border border-primary/25 bg-primary/5 p-3 flex items-center justify-between transition-all">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-primary">
+                      <Sparkles className="size-3.5" />
+                      <span>Fuzzy Auto-Staging</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge
+                        variant={
+                          simResult.stage === "AD"
+                            ? "critical"
+                            : simResult.stage === "MCI"
+                            ? "warning"
+                            : "good"
+                        }
+                      >
+                        {simResult.stage ?? "INDETERMINATE"}
+                      </Badge>
+                      <span className="text-xs text-muted-foreground">
+                        {simResult.confidence.toFixed(1)}% confidence
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                      Auto-Calculated Severity
+                    </span>
+                    <div className="text-lg font-bold tabular-nums text-foreground">
+                      {simResult.severity.toFixed(3)}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="synthetic" className="space-y-2 pt-1">
               <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <Label htmlFor="severity">Severity</Label>
-                <span className="tabular-nums">{severity.toFixed(2)}</span>
+                <Label htmlFor="severity">Synthetic Atrophy Generator Knob</Label>
+                <span className="tabular-nums font-medium">{severity.toFixed(2)}</span>
               </div>
               <input
                 id="severity"
@@ -185,12 +320,11 @@ export function NewCaseDialog({ open, onOpenChange }: NewCaseDialogProps) {
                 className="w-full accent-primary"
               />
               <p className="text-xs text-muted-foreground">
-                Generates a synthetic MRI phantom for demonstration. The case is recorded as PHANTOM,
-                and while a real-data calibration is active it is not staged.
+                Generates a synthetic 3D MRI phantom for demonstration.
               </p>
             </TabsContent>
 
-            <TabsContent value="upload" className="space-y-2">
+            <TabsContent value="upload" className="space-y-2 pt-1">
               <label
                 htmlFor="file"
                 className="flex cursor-pointer flex-col items-center gap-2 rounded-lg border border-dashed border-border bg-secondary/30 p-6 text-center transition-colors hover:bg-secondary/50"
@@ -219,7 +353,7 @@ export function NewCaseDialog({ open, onOpenChange }: NewCaseDialogProps) {
           <DialogFooter>
             <Button type="submit" disabled={submitting} className="gap-2">
               {submitting && <Loader2 className="size-4 animate-spin" />}
-              Create & run
+              Create & stage
             </Button>
           </DialogFooter>
         </form>
@@ -227,3 +361,4 @@ export function NewCaseDialog({ open, onOpenChange }: NewCaseDialogProps) {
     </Dialog>
   );
 }
+

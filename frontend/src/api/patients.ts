@@ -44,6 +44,17 @@ export const uploadScan = (patientId: string, file: File) => {
   return api.postForm<ScanRead>(`/patients/${patientId}/scans/upload`, form);
 };
 
+export interface ManualBiomarkersPayload {
+  derived: {
+    hippocampalVolume: { value: number; unit: string };
+    ventricleBrainRatio: { value: number; unit: string };
+    corticalThickness: { value: number; unit: string };
+  };
+}
+
+export const createBiomarkersScan = (patientId: string, payload: ManualBiomarkersPayload) =>
+  api.post<ScanRead>(`/patients/${patientId}/scans/biomarkers`, payload);
+
 export const reviewScan = (patientId: string, scanId: string, payload: ReviewRequest) =>
   api.post<ScanRead>(`/patients/${patientId}/scans/${scanId}/review`, payload);
 
@@ -89,6 +100,18 @@ export function useCreateSyntheticScan(patientId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: SyntheticScanRequest) => createSyntheticScan(patientId, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: patientKey(patientId) });
+      queryClient.invalidateQueries({ queryKey: ["patients"] });
+      queryClient.invalidateQueries({ queryKey: ["cohort"] });
+    },
+  });
+}
+
+export function useCreateBiomarkersScan(patientId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: ManualBiomarkersPayload) => createBiomarkersScan(patientId, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: patientKey(patientId) });
       queryClient.invalidateQueries({ queryKey: ["patients"] });
